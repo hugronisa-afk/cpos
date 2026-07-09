@@ -1,17 +1,31 @@
 {% extends 'base.html' %}
+{% load static %}
 
-{% block title %}{{ page_title|default:'CPOS' }} | CPOS UTB{% endblock %}
+{% block title %}CPOS UTB{% endblock %}
 
 {% block body %}
-<div class="app">
-  {% include 'partials/sidebar.html' %}
-  <main class="main">
-    {% include 'partials/topbar.html' %}
-    <section class="content">
-      {% block content %}{% endblock %}
-    </section>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="{% url 'landing' %}">
+      <img class="logo dark" src="{% static 'img/logo-utb.png' %}" alt="Logo UTB">
+      <div class="brand-title">
+        CPOS Titulación
+        <span>Universidad Técnica de Babahoyo</span>
+      </div>
+    </a>
+
+    <nav class="side-menu">
+      <a href="{% url 'seguimiento:dashboard' %}">Dashboard</a>
+      <a href="{% url 'seguimiento:tutorias' %}">Tutorías</a>
+      <a href="{% url 'seguimiento:evidencias' %}">Evidencias</a>
+      <a href="{% url 'seguimiento:reportes' %}">Reportes</a>
+    </nav>
+  </aside>
+
+  <main class="main-content">
+    {% block content %}{% endblock %}
   </main>
 </div>
+
 {% block modals %}{% endblock %}
-<div class="toast"></div>
 {% endblock %}
