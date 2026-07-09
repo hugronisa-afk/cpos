@@ -1,0 +1,14 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head"><div><h2>Expediente de titulación</h2><p>Centraliza datos del maestrante, tema aprobado, modalidad, tutor asignado y avance general.</p></div><div class="actions"><button class="btn secondary" data-toast="Expediente actualizado en la maqueta">Guardar cambios</button><a class="btn" href="{% url 'titulacion:proyecto' %}">Gestionar proyecto</a></div></div>
+<div class="grid cols-3">
+  <div class="card"><h3>Datos del maestrante</h3><p><b>Nombre:</b> María Fernanda López</p><p><b>Programa:</b> Maestría en Tecnología e Innovación</p><p><b>Cohorte:</b> 2026-A</p><span class="badge ok">Activo en titulación</span></div>
+  <div class="card"><h3>Proyecto</h3><p><b>Tema:</b> Plataforma web para control de tutorías de posgrado.</p><p><b>Modalidad:</b> Artículo científico</p><p><b>Resolución:</b> CPOS-UTB-2026-014</p><span class="badge">Tema aprobado</span></div>
+  <div class="card"><h3>Tutor asignado</h3><p><b>Docente:</b> Dr. Luis Andrade</p><p><b>Área:</b> Ingeniería de software</p><p><b>Fecha:</b> 12/06/2026</p><span class="badge ok">Notificado</span></div>
+</div>
+<div class="grid cols-2" style="margin-top:18px">
+  <div class="card"><h3>Carga documental inicial</h3><div class="field"><label>Tema de titulación</label><input value="Plataforma web para control de tutorías de posgrado"></div><div class="grid cols-2"><div class="field"><label>Archivo Word</label><input type="file" accept=".doc,.docx"></div><div class="field"><label>Archivo PDF</label><input type="file" accept=".pdf"></div></div><button class="btn" data-toast="Documentos cargados en modo maqueta">Cargar documentos</button></div>
+  <div class="card"><h3>Trazabilidad del expediente</h3><div class="timeline"><div class="item"><h4>Carga del tema</h4><p>03/06/2026 · maestrante@utb.edu.ec</p></div><div class="item"><h4>Visto bueno de módulo</h4><p>05/06/2026 · Docente de módulo</p></div><div class="item"><h4>Aprobación de modalidad</h4><p>09/06/2026 · Comisión CPOS</p></div><div class="item"><h4>Asignación de tutor</h4><p>12/06/2026 · Coordinación</p></div></div></div>
+</div>
+{% endblock %}

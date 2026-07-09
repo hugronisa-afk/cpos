@@ -1,0 +1,37 @@
+{% load static %}
+<aside class="sidebar">
+  <div class="side-brand">
+    <img class="logo" src="{% static 'img/logo-utb.png' %}" alt="Logo Universidad Técnica de Babahoyo">
+    <div><b>CPOS Titulación</b><span> Universidad Técnica de Babahoyo</span></div>
+  </div>
+
+  <nav>
+    <div class="side-label">Base</div>
+    <a class="{% if active_page == 'dashboard' %}active{% endif %}" href="{% url 'titulacion:dashboard' %}"><span>▸</span>Panel principal</a>
+    <a class="{% if active_page == 'usuarios' %}active{% endif %}" href="{% url 'accounts:usuarios' %}"><span>▸</span>Usuarios y roles</a>
+    <a class="{% if active_page == 'auditoria' %}active{% endif %}" href="{% url 'accounts:auditoria' %}"><span>▸</span>Bitácora</a>
+    <a class="{% if active_page == 'db' %}active{% endif %}" href="{% url 'db_status' %}"><span>▸</span>Estado BD</a>
+
+    <div class="side-separator"></div>
+    <div class="side-label">Titulación</div>
+    <a class="{% if active_page == 'expediente' %}active{% endif %}" href="{% url 'titulacion:expediente' %}"><span>▸</span>Expediente</a>
+    <a class="{% if active_page == 'proyecto' %}active{% endif %}" href="{% url 'titulacion:proyecto' %}"><span>▸</span>Proyecto</a>
+    <a class="{% if active_page == 'articulo' %}active{% endif %}" href="{% url 'titulacion:articulo' %}"><span>▸</span>Artículo</a>
+    <a class="{% if active_page == 'aprobaciones' %}active{% endif %}" href="{% url 'titulacion:aprobaciones' %}"><span>▸</span>Aprobaciones</a>
+    <a class="{% if active_page == 'requerimientos' %}active{% endif %}" href="{% url 'titulacion:requerimientos' %}"><span>▸</span>Requerimientos</a>
+
+    <div class="side-separator"></div>
+    <div class="side-label">Seguimiento</div>
+    <a class="{% if active_page == 'seguimiento_dashboard' %}active{% endif %}" href="{% url 'seguimiento:dashboard' %}"><span>▸</span>Panel seguimiento</a>
+    <a class="{% if active_page == 'tutorias' %}active{% endif %}" href="{% url 'seguimiento:tutorias' %}"><span>▸</span>Tutorías</a>
+    <a class="{% if active_page == 'evidencias' %}active{% endif %}" href="{% url 'seguimiento:evidencias' %}"><span>▸</span>Evidencias</a>
+    <a class="{% if active_page == 'reportes' %}active{% endif %}" href="{% url 'seguimiento:reportes' %}"><span>▸</span>Reportes</a>
+  </nav>
+
+  <footer>
+    <div class="tiny">Vista actual</div>
+    <b data-role-current>Maestrante</b>
+    <div class="small" style="margin-top:8px">Plantillas Django listas para conectar con vistas, modelos y permisos.</div>
+    <a class="btn secondary smallbtn" style="margin-top:12px;width:100%" href="{% url 'landing' %}">Ver landing</a>
+  </footer>
+</aside>

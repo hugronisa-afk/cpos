@@ -1,0 +1,39 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Panel de seguimiento académico</h2>
+    <p>Vista específica para controlar tutorías, evidencias, observaciones, historial y reportes del proceso de titulación.</p>
+  </div>
+  <a class="btn" href="{% url 'seguimiento:tutorias' %}">Ir a tutorías</a>
+</div>
+
+<div class="grid cols-4">
+  <div class="card stat"><div><span class="small">Tutorías cumplidas</span><div class="metric">6/8</div><div class="progress"><span class="bar" style="--w:75%"></span></div></div><div class="icon">TU</div></div>
+  <div class="card stat"><div><span class="small">Evidencias revisadas</span><div class="metric">5/8</div><div class="progress"><span class="bar" style="--w:62%"></span></div></div><div class="icon">EV</div></div>
+  <div class="card stat"><div><span class="small">Observaciones</span><div class="metric">3</div><span class="badge warn">Pendientes</span></div><div class="icon">OB</div></div>
+  <div class="card stat"><div><span class="small">Reportes</span><div class="metric">4</div><span class="badge ok">Disponibles</span></div><div class="icon">RP</div></div>
+</div>
+
+<div class="grid cols-2" style="margin-top:18px">
+  <div class="card">
+    <h3>Próximas acciones</h3>
+    <div class="timeline">
+      <div class="item"><h4>Tutoría 7</h4><p>Programar sala virtual, registrar asistencia y asociar evidencia.</p></div>
+      <div class="item"><h4>Evidencia pendiente</h4><p>El tutor debe validar la evidencia de la tutoría 6.</p></div>
+      <div class="item"><h4>Reporte de seguimiento</h4><p>Coordinación puede revisar avances por programa y cohorte.</p></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Accesos rápidos</h3>
+    <div class="grid cols-2">
+      <a class="btn secondary" href="{% url 'seguimiento:tutorias' %}">Tutorías</a>
+      <a class="btn secondary" href="{% url 'seguimiento:evidencias' %}">Evidencias</a>
+      <a class="btn secondary" href="{% url 'seguimiento:reportes' %}">Reportes</a>
+      <a class="btn secondary" href="{% url 'accounts:auditoria' %}">Bitácora</a>
+    </div>
+    <p class="tiny" style="margin-top:12px">Los datos son temporales de interfaz hasta enlazar modelos y consultas ORM.</p>
+  </div>
+</div>
+{% endblock %}

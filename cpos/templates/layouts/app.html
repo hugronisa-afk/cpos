@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ page_title|default:'CPOS' }} | CPOS UTB{% endblock %}
+
+{% block body %}
+<div class="app">
+  {% include 'partials/sidebar.html' %}
+  <main class="main">
+    {% include 'partials/topbar.html' %}
+    <section class="content">
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+</div>
+{% block modals %}{% endblock %}
+<div class="toast"></div>
+{% endblock %}

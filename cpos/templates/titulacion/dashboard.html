@@ -1,0 +1,16 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head"><div><h2>Resumen del proceso</h2><p>Vista rápida del avance del maestrante, tutorías, evidencias y aprobaciones. Cambia el rol en la parte superior para imaginar cómo se adaptaría el sistema real.</p></div><a class="btn" href="{% url 'titulacion:expediente' %}">Ver expediente</a></div>
+<div class="grid cols-4">
+  <div class="card stat"><div><span class="small">Tutorías cumplidas</span><div class="metric">6/8</div><div class="progress"><span class="bar" style="--w:75%"></span></div></div><div class="icon">TU</div></div>
+  <div class="card stat"><div><span class="small">Evidencias validadas</span><div class="metric">5/8</div><div class="progress"><span class="bar" style="--w:62%"></span></div></div><div class="icon">EV</div></div>
+  <div class="card stat"><div><span class="small">Artículo científico</span><div class="metric">68%</div><div class="progress"><span class="bar" style="--w:68%"></span></div></div><div class="icon">AR</div></div>
+  <div class="card stat"><div><span class="small">Alertas</span><div class="metric">3</div><span class="badge warn">Acción requerida</span></div><div class="icon">AL</div></div>
+</div>
+<div class="grid cols-2" style="margin-top:18px">
+  <div class="card"><h3>Actividades próximas</h3><div class="timeline"><div class="item"><h4>Tutoría 7 · Metodología y resultados</h4><p>Jueves 10:00 · Sala Zoom registrada · evidencia requerida.</p></div><div class="item"><h4>Validación pendiente</h4><p>El tutor debe revisar la evidencia de la tutoría 6.</p></div><div class="item"><h4>Reporte mensual</h4><p>Coordinación revisa expedientes con atrasos.</p></div></div></div>
+  <div class="card"><h3>Accesos rápidos por rol</h3><div class="grid cols-2"><a class="btn secondary" href="{% url 'seguimiento:evidencias' %}">Subir evidencia</a><a class="btn secondary" href="{% url 'seguimiento:tutorias' %}">Programar tutoría</a><a class="btn secondary" href="{% url 'titulacion:aprobaciones' %}">Aprobar cambios</a><a class="btn secondary" href="{% url 'seguimiento:reportes' %}">Generar reporte</a></div><p class="tiny" style="margin-top:12px">En una versión real, cada botón se mostraría o bloquearía según permisos.</p></div>
+</div>
+<div class="card" style="margin-top:18px"><h3>Estado de expedientes por cohorte</h3><div class="table-wrap"><table class="table"><thead><tr><th>Programa</th><th>Cohorte</th><th>En revisión</th><th>Con tutor</th><th>Listos para cierre</th><th>Observados</th></tr></thead><tbody><tr><td>Maestría en Tecnología e Innovación</td><td>2026-A</td><td>18</td><td>34</td><td>7</td><td>5</td></tr><tr><td>Maestría en Educación</td><td>2026-A</td><td>11</td><td>26</td><td>9</td><td>4</td></tr><tr><td>Maestría en Administración</td><td>2025-B</td><td>6</td><td>21</td><td>14</td><td>2</td></tr></tbody></table></div></div>
+{% endblock %}

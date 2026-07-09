@@ -1,0 +1,16 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head"><div><h2>Evidencias y validación</h2><p>Cada tutoría realizada debe generar al menos una evidencia académica con versión, observación del tutor y estado de validación.</p></div><button class="btn" data-modal="modalEvidencia">Subir evidencia</button></div>
+<div class="tabs"><button class="tab active" data-tab>Todas</button><button class="tab" data-tab>Pendientes</button><button class="tab" data-tab>Validadas</button><button class="tab" data-tab>Observadas</button></div>
+<div class="kanban">
+  <div class="column"><h3>Por revisar</h3><div class="mini-card"><span class="badge warn">Tutoría 6</span><h4>Resultados preliminares v1</h4><p class="small">Subido por maestrante · 06/07/2026</p><button class="btn secondary smallbtn" data-toast="Evidencia abierta">Revisar</button></div><div class="mini-card"><span class="badge warn">Tutoría 7</span><h4>Discusión bibliográfica</h4><p class="small">Pendiente de revisión.</p></div></div>
+  <div class="column"><h3>Observadas</h3><div class="mini-card"><span class="badge danger">Corrección requerida</span><h4>Metodología v2</h4><p class="small">Falta justificar muestra e instrumento.</p><button class="btn secondary smallbtn" data-toast="Observaciones mostradas">Ver observaciones</button></div></div>
+  <div class="column"><h3>Validadas</h3><div class="mini-card"><span class="badge ok">Tutoría 1</span><h4>Título y problema</h4><p class="small">Validado por Dr. Luis Andrade.</p></div><div class="mini-card"><span class="badge ok">Tutoría 5</span><h4>Marco teórico</h4><p class="small">Versión 3 aprobada.</p></div></div>
+</div>
+<div class="card" style="margin-top:18px"><h3>Panel del tutor</h3><div class="grid cols-2"><div class="field"><label>Observación estructurada</label><textarea placeholder="Escriba observaciones para devolver o validar la evidencia..."></textarea></div><div><p><b>Regla de cierre:</b></p><p class="small">El sistema debe impedir el cierre si no existen ocho evidencias validadas, una por cada sesión realizada.</p><div class="actions"><button class="btn" data-toast="Evidencia validada">Validar evidencia</button><button class="btn secondary" data-toast="Evidencia devuelta con observaciones">Devolver con observaciones</button></div></div></div></div>
+{% endblock %}
+
+{% block modals %}
+<div id="modalEvidencia" class="modal"><div class="modal-card"><div class="modal-head"><h3>Subir evidencia por tutoría</h3><button class="close" data-close-modal>Cerrar</button></div><div class="grid cols-2"><div class="field"><label>Tutoría</label><select><option>Tutoría 6</option><option>Tutoría 7</option><option>Tutoría 8</option></select></div><div class="field"><label>Tipo de avance</label><select><option>Introducción</option><option>Metodología</option><option>Resultados</option><option>Conclusiones</option><option>Referencias</option></select></div></div><div class="field"><label>Archivo de evidencia</label><input type="file" accept=".pdf,.doc,.docx,.xlsx,.pptx"></div><div class="field"><label>Comentario del maestrante</label><textarea></textarea></div><button class="btn" data-close-modal data-toast="Evidencia cargada y enviada al tutor">Enviar evidencia</button></div></div>
+{% endblock %}

@@ -1,0 +1,22 @@
+<header class="topbar">
+  <div>
+    <h1>{{ page_title|default:'CPOS UTB' }}</h1>
+    <div class="small">{{ page_subtitle|default:'Sistema de Gestión de Titulación de Posgrado' }}</div>
+  </div>
+  <div class="topbar-actions">
+    <select class="role-select" aria-label="Cambiar rol de prueba">
+      <option value="maestrante">Maestrante</option>
+      <option value="tutor">Docente tutor</option>
+      <option value="coordinador">Coordinador</option>
+      <option value="supervisor">Supervisor</option>
+    </select>
+    {% if user.is_authenticated %}
+      <form class="logout-inline" method="post" action="{% url 'accounts:logout' %}">
+        {% csrf_token %}
+        <button class="btn secondary smallbtn" type="submit">Cerrar sesión</button>
+      </form>
+    {% else %}
+      <a class="btn secondary smallbtn" href="{% url 'accounts:login' %}">Ingresar</a>
+    {% endif %}
+  </div>
+</header>

@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}CPOS | Sistema de Gestión de Titulación de Posgrado UTB{% endblock %}
+
+{% block body %}
+<header class="top-landing">
+  <div class="container landing-nav">
+    <a class="brand" href="{% url 'landing' %}">
+      <img class="logo dark" src="{% static 'img/logo-utb.png' %}" alt="Logo UTB">
+      <div class="brand-title">CPOS Titulación<span>Universidad Técnica de Babahoyo</span></div>
+    </a>
+    <nav class="landing-menu">
+      <a href="#modulos">Módulos</a>
+      <a href="#flujo">Flujo</a>
+      <a href="{% url 'titulacion:requerimientos' %}">Requerimientos</a>
+      <a class="btn smallbtn" href="{% url 'accounts:login' %}">Ingresar</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <span class="badge black">Plantillas Django adaptadas</span>
+      <h1>Gestión de Titulación de Posgrado CPOS</h1>
+      <p>Interfaz visual para controlar tema, modalidad, tutor, tutorías obligatorias, evidencias, grabaciones, aprobación académica, artículo científico, reportes y auditoría institucional.</p>
+      <div class="hero-actions">
+        <a class="btn" href="{% url 'accounts:login' %}">Probar inicio de sesión</a>
+        <a class="btn secondary" href="{% url 'titulacion:dashboard' %}">Entrar al panel demo</a>
+      </div>
+    </div>
+    <div class="hero-card">
+      <img class="logo" src="{% static 'img/logo-utb.png' %}" alt="Logo UTB">
+      <h2 style="margin:0 0 8px">Identidad institucional</h2>
+      <p>Se usa verde oscuro, negro, blanco y tonos suaves derivados del logotipo de la Universidad Técnica de Babahoyo.</p>
+      <div class="grid cols-2" style="margin-top:16px">
+        <div class="card" style="background:rgba(255,255,255,.9)"><b>8/8 tutorías</b><div class="progress" style="margin-top:10px"><span class="bar" style="--w:75%"></span></div><span class="tiny">Simulación de avance</span></div>
+        <div class="card" style="background:rgba(255,255,255,.9)"><b>Roles</b><div class="pill-row" style="margin-top:10px"><span class="badge">Maestrante</span><span class="badge">Tutor</span><span class="badge">Coordinador</span><span class="badge">Supervisor</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="modulos" class="section">
+  <div class="container">
+    <div class="section-title">
+      <div><span class="badge">Módulos principales</span><h2>Una pantalla para cada parte del proceso</h2></div>
+      <p>La maqueta se adaptó a las apps actuales del proyecto: accounts, titulacion y seguimiento.</p>
+    </div>
+    <div class="grid cols-4">
+      <a class="card" href="{% url 'titulacion:expediente' %}"><div class="icon">EX</div><h3>Expediente</h3><p class="small">Tema, programa, cohorte, modalidad, tutor y estado general.</p></a>
+      <a class="card" href="{% url 'seguimiento:tutorias' %}"><div class="icon">TU</div><h3>8 tutorías</h3><p class="small">Agenda, sala virtual, asistencia, reprogramaciones y grabaciones.</p></a>
+      <a class="card" href="{% url 'seguimiento:evidencias' %}"><div class="icon">EV</div><h3>Evidencias</h3><p class="small">Carga, versiones, observaciones, validación o devolución.</p></a>
+      <a class="card" href="{% url 'seguimiento:reportes' %}"><div class="icon">RP</div><h3>Reportes</h3><p class="small">Indicadores para coordinación y supervisión general.</p></a>
+    </div>
+  </div>
+</section>
+
+<section id="flujo" class="section" style="background:white;border-top:1px solid var(--utb-line);border-bottom:1px solid var(--utb-line)">
+  <div class="container">
+    <div class="section-title">
+      <div><span class="badge">Flujo académico</span><h2>Desde la carga del tema hasta el cierre</h2></div>
+      <p>Esta versión ya está preparada como frontend Django y queda lista para conectar formularios, modelos y permisos.</p>
+    </div>
+    <div class="grid cols-3">
+      <div class="step"><div class="step-no">1</div><div><h3>Carga inicial</h3><p class="small">Tema, Word, PDF, modalidad y visto bueno.</p></div></div>
+      <div class="step"><div class="step-no">2</div><div><h3>Asignación y agenda</h3><p class="small">Tutor asignado y ocho sesiones obligatorias.</p></div></div>
+      <div class="step"><div class="step-no">3</div><div><h3>Validación y cierre</h3><p class="small">Evidencias, artículo por secciones, reportes y aprobación final.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer"><div class="container">© <span data-year></span> CPOS UTB · Plantillas Django adaptadas desde la maqueta HTML/CSS.</div></footer>
+<div class="toast"></div>
+{% endblock %}

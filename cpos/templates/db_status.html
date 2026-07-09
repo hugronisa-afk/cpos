@@ -1,0 +1,46 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Prueba de conexión a base de datos</h2>
+    <p>Esta vista ejecuta una consulta simple <b>SELECT 1</b> usando la configuración actual de Django.</p>
+  </div>
+  <a class="btn secondary" href="{% url 'landing' %}">Volver al inicio</a>
+</div>
+
+<div class="card {% if db_ok %}status-ok{% else %}status-error{% endif %}">
+  <h3>{% if db_ok %}Conexión exitosa{% else %}No se pudo conectar{% endif %}</h3>
+  <p class="small">{{ message }}</p>
+  <div class="grid cols-2" style="margin-top:18px">
+    <div>
+      <span class="tiny">Motor</span>
+      <div><b>{{ db_engine }}</b></div>
+    </div>
+    <div>
+      <span class="tiny">Base de datos</span>
+      <div><b>{{ db_name }}</b></div>
+    </div>
+    <div>
+      <span class="tiny">Host</span>
+      <div><b>{{ db_host }}</b></div>
+    </div>
+    <div>
+      <span class="tiny">Puerto</span>
+      <div><b>{{ db_port }}</b></div>
+    </div>
+  </div>
+</div>
+
+{% if error_detail %}
+<div class="card" style="margin-top:18px">
+  <h3>Detalle técnico</h3>
+  <pre class="code-box">{{ error_detail }}</pre>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:18px">
+  <h3>Cómo usar esta pantalla</h3>
+  <p class="small">Abre <b>/estado-db/</b>. Si PostgreSQL está levantado y las variables del archivo <b>.env</b> son correctas, verás la conexión exitosa. Si algo falla, esta vista muestra el error sin tumbar el proyecto.</p>
+</div>
+{% endblock %}

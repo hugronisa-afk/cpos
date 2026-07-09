@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Inicio de sesión | CPOS UTB{% endblock %}
+
+{% block body %}
+<div class="login-page">
+  <section class="login-copy">
+    <a class="brand" href="{% url 'landing' %}" style="color:white">
+      <img class="logo" src="{% static 'img/logo-utb.png' %}" alt="Logo UTB">
+      <div class="brand-title">CPOS Titulación<span style="color:#bde7d3">Universidad Técnica de Babahoyo</span></div>
+    </a>
+    <h1>Acceso al sistema de titulación</h1>
+    <p>Ingresa con las credenciales creadas en Django/PostgreSQL. El selector de rol de la interfaz se mantiene solo como apoyo visual para recorrer la maqueta.</p>
+    <div class="grid cols-2" style="margin-top:18px;max-width:680px">
+      <div class="card" style="background:rgba(255,255,255,.12);color:white;border-color:rgba(255,255,255,.22)"><b>Control por roles</b><p class="small" style="color:#d7eee3">Preparado para maestrante, tutor, coordinador y supervisor.</p></div>
+      <div class="card" style="background:rgba(255,255,255,.12);color:white;border-color:rgba(255,255,255,.22)"><b>Integrable</b><p class="small" style="color:#d7eee3">Listo para conectar autenticación, permisos y modelos.</p></div>
+    </div>
+  </section>
+
+  <section class="login-panel">
+    <form method="post" class="login-card" novalidate>
+      {% csrf_token %}
+      <img class="logo dark" src="{% static 'img/logo-utb.png' %}" alt="Logo UTB">
+      <h2 style="font-size:2rem;margin:14px 0 6px">Iniciar sesión</h2>
+      <p class="small">Formulario de autenticación de Django.</p>
+
+      {% if form.errors %}
+        <div class="django-form-error">Usuario o contraseña incorrectos. Verifica tus datos e inténtalo nuevamente.</div>
+      {% endif %}
+
+      <div class="field">
+        <label for="{{ form.username.id_for_label }}">Usuario o correo institucional</label>
+        {{ form.username }}
+      </div>
+      <div class="field">
+        <label for="{{ form.password.id_for_label }}">Contraseña</label>
+        {{ form.password }}
+      </div>
+      <div class="field">
+        <label>Perfil visual de prueba</label>
+        <select class="role-select" aria-label="Cambiar rol de prueba">
+          <option value="maestrante">Maestrante</option>
+          <option value="tutor">Docente tutor</option>
+          <option value="coordinador">Coordinador de programa</option>
+          <option value="supervisor">Supervisor general</option>
+        </select>
+        <div class="form-help">Este selector solo cambia la vista demo; los permisos reales se conectan luego desde la base de datos.</div>
+      </div>
+      <button class="btn" type="submit" style="width:100%">Ingresar al panel</button>
+      <a class="btn secondary" href="{% url 'landing' %}" style="width:100%;margin-top:10px">Volver a landing</a>
+    </form>
+  </section>
+</div>
+<div class="toast"></div>
+{% endblock %}
