@@ -1,0 +1,49 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Formulario de evidencia</h2>
+    {% if tutoria %}
+      <p>Tutoría {{ tutoria.numero|default:tutoria.id }} · {{ tutoria.tema|default:"Sin tema" }}</p>
+    {% elif evidencia %}
+      <p>Corrección de evidencia: {{ evidencia.titulo|default:"Sin título" }}</p>
+    {% else %}
+      <p>Registro o corrección de evidencia.</p>
+    {% endif %}
+  </div>
+
+  {% if tutoria %}
+    <a class="btn secondary" href="{% url 'seguimiento:detalle_tutoria' tutoria.id %}">Volver</a>
+  {% elif evidencia %}
+    <a class="btn secondary" href="{% url 'seguimiento:detalle_evidencia' evidencia.id %}">Volver</a>
+  {% else %}
+    <a class="btn secondary" href="{% url 'seguimiento:evidencias' %}">Volver</a>
+  {% endif %}
+</div>
+
+<div class="card">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="badge danger">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {% for field in form %}
+      <div class="field">
+        <label>{{ field.label }}</label>
+        {{ field }}
+
+        {% if field.errors %}
+          <p class="small" style="color:#b91c1c">{{ field.errors|striptags }}</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <button class="btn" type="submit">Guardar evidencia</button>
+  </form>
+</div>
+{% endblock %}

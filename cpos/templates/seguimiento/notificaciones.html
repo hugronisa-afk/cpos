@@ -1,0 +1,33 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Notificaciones</h2>
+    <p>Alertas y avisos del proceso de seguimiento.</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:dashboard' %}">Volver</a>
+</div>
+
+<div class="card">
+  {% if notificaciones %}
+    <div class="timeline">
+      {% for notificacion in notificaciones %}
+        <div class="item">
+          <h4>{{ notificacion.titulo|default:"Notificación" }}</h4>
+          <p>{{ notificacion.mensaje|default:"Sin mensaje" }}</p>
+          <p class="tiny">{{ notificacion.creado_en|date:"d/m/Y H:i" }}</p>
+
+          {% if notificacion.leida %}
+            <span class="badge ok">Leída</span>
+          {% else %}
+            <span class="badge warn">No leída</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="small">No tienes notificaciones registradas.</p>
+  {% endif %}
+</div>
+{% endblock %}

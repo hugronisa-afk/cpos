@@ -1,0 +1,111 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Detalle de tutoría</h2>
+    <p>Tutoría {{ tutoria.numero|default:tutoria.id }} · {{ tutoria.tema|default:"Sin tema" }}</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:tutorias' %}">Volver</a>
+</div>
+
+<div class="grid cols-3">
+  <div class="card">
+    <h3>Información</h3>
+    <p><b>Fecha:</b> {{ tutoria.fecha|date:"d/m/Y"|default:"Sin fecha" }}</p>
+    <p><b>Hora:</b> {{ tutoria.hora_inicio|time:"H:i"|default:"--" }} - {{ tutoria.hora_fin|time:"H:i"|default:"--" }}</p>
+    <p><b>Estado:</b> <span class="badge">{{ tutoria.estado }}</span></p>
+    <p><b>Sala:</b>
+      {% if tutoria.enlace_sala %}
+        <a href="{{ tutoria.enlace_sala }}" target="_blank">Abrir enlace</a>
+      {% else %}
+        Sin enlace
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Asistencia</h3>
+    {% if asistencias %}
+      {% for asistencia in asistencias %}
+        <p>
+          <b>{{ asistencia.tipo_participante|title }}:</b>
+          {% if asistencia.asistio %}
+            <span class="badge ok">Asistió</span>
+          {% else %}
+            <span class="badge danger">No asistió</span>
+          {% endif %}
+        </p>
+      {% endfor %}
+    {% else %}
+      <p class="small">Aún no se registra asistencia.</p>
+    {% endif %}
+
+    <a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_asistencia' tutoria.id %}">Registrar asistencia</a>
+  </div>
+
+  <div class="card">
+    <h3>Grabaciones</h3>
+    {% if grabaciones %}
+      {% for grabacion in grabaciones %}
+        <p>
+          {% if grabacion.enlace %}
+            <a href="{{ grabacion.enlace }}" target="_blank">Ver grabación</a>
+          {% elif grabacion.archivo %}
+            <a href="{{ grabacion.archivo.url }}" target="_blank">Descargar archivo</a>
+          {% else %}
+            Grabación sin archivo o enlace
+          {% endif %}
+        </p>
+      {% endfor %}
+    {% else %}
+      <p class="small">No hay grabaciones registradas.</p>
+    {% endif %}
+
+    <a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_grabacion' tutoria.id %}">Registrar grabación</a>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <div class="page-head" style="margin-bottom:12px">
+    <div>
+      <h3>Evidencias de esta tutoría</h3>
+      <p>Evidencias asociadas a la sesión seleccionada.</p>
+    </div>
+    {% if puede_subir_evidencia %}
+      <a class="btn" href="{% url 'seguimiento:subir_evidencia' tutoria.id %}">Subir evidencia</a>
+    {% endif %}
+  </div>
+
+  {% if evidencias %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Título</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for evidencia in evidencias %}
+            <tr>
+              <td>{{ evidencia.tipo_avance }}</td>
+              <td>{{ evidencia.titulo|default:"Sin título" }}</td>
+              <td><span class="badge">{{ evidencia.estado }}</span></td>
+              <td>{{ evidencia.fecha_carga|date:"d/m/Y H:i"|default:"Sin fecha" }}</td>
+              <td>
+                <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_evidencia' evidencia.id %}">Ver</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="small">Esta tutoría aún no tiene evidencias.</p>
+  {% endif %}
+</div>
+{% endblock %}
