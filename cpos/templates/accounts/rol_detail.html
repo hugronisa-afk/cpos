@@ -1,0 +1,17 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head">
+  <div><h2>Rol {{ rol.nombre|capfirst }}</h2><p>{{ rol.descripcion|default:'Sin descripción registrada.' }}</p></div>
+  <div class="actions"><a class="btn secondary" href="{% url 'accounts:roles_list' %}">Volver</a>{% if user.rol.nombre == 'supervisor' %}<a class="btn" href="{% url 'accounts:rol_permisos_update' rol.pk %}">Asignar permisos</a>{% endif %}</div>
+</div>
+<div class="grid cols-3">
+  <div class="card stat"><div><span class="small">Nivel</span><div class="metric metric-text">{{ rol.nivel_autoridad|capfirst }}</div></div><div class="icon">NV</div></div>
+  <div class="card stat"><div><span class="small">Estado</span><div>{% if rol.esta_activo %}<span class="badge ok">Activo</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</div></div><div class="icon">ES</div></div>
+  <div class="card stat"><div><span class="small">Permisos activos</span><div class="metric">{{ permisos|length }}</div></div><div class="icon">PE</div></div>
+</div>
+<div class="card">
+  <h3>Permisos asignados</h3>
+  <div class="table-wrap"><table class="table"><thead><tr><th>Código</th><th>Nombre</th><th>Módulo</th><th>Estado</th></tr></thead><tbody>{% for permiso in permisos %}<tr><td><b>{{ permiso.codigo }}</b></td><td>{{ permiso.nombre }}</td><td>{{ permiso.modulo|capfirst }}</td><td>{% if permiso.esta_activo %}<span class="badge ok">Activo</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="4"><div class="empty-state">Este rol no tiene permisos asignados.</div></td></tr>{% endfor %}</tbody></table></div>
+</div>
+{% endblock %}

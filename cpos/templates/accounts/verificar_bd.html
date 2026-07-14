@@ -1,0 +1,11 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>Estado de la base de datos</h2><p>Comprobación segura de la conexión institucional.</p></div><a class="btn secondary" href="{% url 'accounts:dashboard' %}">Volver al panel</a></div>
+<div class="card {% if db_ok %}status-ok{% else %}status-error{% endif %}">
+  <div class="card-heading"><div><span class="badge {% if db_ok %}ok{% else %}danger{% endif %}">{% if db_ok %}Disponible{% else %}No disponible{% endif %}</span><h3>{% if db_ok %}Conexión correcta{% else %}No fue posible conectar{% endif %}</h3></div><div class="icon">BD</div></div>
+  <p>{{ mensaje }}</p>
+  <dl class="detail-list compact"><div><dt>Esquema activo</dt><dd>{{ esquema }}</dd></div><div><dt>Motor</dt><dd>PostgreSQL</dd></div></dl>
+</div>
+<div class="alert info">Por seguridad, esta pantalla no muestra host, credenciales, consultas ni errores internos.</div>
+{% endblock %}

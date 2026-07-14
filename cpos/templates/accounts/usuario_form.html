@@ -1,0 +1,13 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head">
+  <div><h2>{% if modo == 'crear' %}Crear usuario{% else %}Editar usuario{% endif %}</h2><p>El nombre de usuario se genera automáticamente con la cédula y la sigla del rol.</p></div>
+  <a class="btn secondary" href="{% url 'accounts:usuarios' %}">Volver a usuarios</a>
+</div>
+<form class="card form-card form-wide" method="post" novalidate>
+  {% csrf_token %}
+  {% include 'accounts/partials/form_fields.html' %}
+  <div class="form-actions"><button class="btn" type="submit">{% if modo == 'crear' %}Crear cuenta{% else %}Guardar cambios{% endif %}</button><a class="btn secondary" href="{% url 'accounts:usuarios' %}">Cancelar</a></div>
+</form>
+{% endblock %}
