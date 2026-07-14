@@ -1,0 +1,64 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Evidencias</h2>
+    <p>Carga, revisión, observación, validación e historial de versiones.</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:dashboard' %}">Volver al dashboard</a>
+</div>
+
+<div class="card">
+  <h3>Listado de evidencias</h3>
+
+  {% if evidencias %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Título</th>
+            <th>Tutoría</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for evidencia in evidencias %}
+            <tr>
+              <td>{{ evidencia.tipo_avance }}</td>
+              <td>{{ evidencia.titulo|default:"Sin título" }}</td>
+              <td>
+                {% if evidencia.tutoria %}
+                  Tutoría {{ evidencia.tutoria.numero|default:evidencia.tutoria.id }}
+                {% else %}
+                  Sin tutoría
+                {% endif %}
+              </td>
+              <td>
+                {% if evidencia.estado == "validada" %}
+                  <span class="badge ok">{{ evidencia.estado }}</span>
+                {% elif evidencia.estado == "observada" %}
+                  <span class="badge warn">{{ evidencia.estado }}</span>
+                {% elif evidencia.estado == "rechazada" %}
+                  <span class="badge danger">{{ evidencia.estado }}</span>
+                {% else %}
+                  <span class="badge">{{ evidencia.estado }}</span>
+                {% endif %}
+              </td>
+              <td>{{ evidencia.fecha_carga|date:"d/m/Y H:i"|default:"Sin fecha" }}</td>
+              <td>
+                <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_evidencia' evidencia.id %}">Ver</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="small">No hay evidencias registradas.</p>
+  {% endif %}
+</div>
+{% endblock %}

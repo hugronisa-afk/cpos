@@ -3,37 +3,192 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h2>Panel de seguimiento académico</h2>
-    <p>Vista específica para controlar tutorías, evidencias, observaciones, historial y reportes del proceso de titulación.</p>
+    <h2>Dashboard de seguimiento</h2>
+    <p>Resumen del avance académico del proceso de titulación.</p>
   </div>
-  <a class="btn" href="{% url 'seguimiento:tutorias' %}">Ir a tutorías</a>
+  <a class="btn" href="{% url 'seguimiento:tutorias' %}">Ver tutorías</a>
 </div>
 
 <div class="grid cols-4">
-  <div class="card stat"><div><span class="small">Tutorías cumplidas</span><div class="metric">6/8</div><div class="progress"><span class="bar" style="--w:75%"></span></div></div><div class="icon">TU</div></div>
-  <div class="card stat"><div><span class="small">Evidencias revisadas</span><div class="metric">5/8</div><div class="progress"><span class="bar" style="--w:62%"></span></div></div><div class="icon">EV</div></div>
-  <div class="card stat"><div><span class="small">Observaciones</span><div class="metric">3</div><span class="badge warn">Pendientes</span></div><div class="icon">OB</div></div>
-  <div class="card stat"><div><span class="small">Reportes</span><div class="metric">4</div><span class="badge ok">Disponibles</span></div><div class="icon">RP</div></div>
+  <div class="card stat">
+    <div>
+      <span class="small">Tutorías realizadas</span>
+      <div class="metric">{{ progreso_tutorias.realizadas }}/8</div>
+      <div class="progress">
+        <span class="bar
+  {% if progreso_tutorias.porcentaje >= 100 %}w-100
+  {% elif progreso_tutorias.porcentaje >= 90 %}w-90
+  {% elif progreso_tutorias.porcentaje >= 80 %}w-80
+  {% elif progreso_tutorias.porcentaje >= 70 %}w-70
+  {% elif progreso_tutorias.porcentaje >= 60 %}w-60
+  {% elif progreso_tutorias.porcentaje >= 50 %}w-50
+  {% elif progreso_tutorias.porcentaje >= 40 %}w-40
+  {% elif progreso_tutorias.porcentaje >= 30 %}w-30
+  {% elif progreso_tutorias.porcentaje >= 20 %}w-20
+  {% elif progreso_tutorias.porcentaje >= 10 %}w-10
+  {% else %}w-0
+  {% endif %}
+"></span>
+      </div>
+    </div>
+    <div class="icon">TU</div>
+  </div>
+
+  <div class="card stat">
+    <div>
+      <span class="small">Evidencias validadas</span>
+      <div class="metric">{{ progreso_evidencias.validadas }}/8</div>
+      <div class="progress">
+        <span class="bar
+  {% if progreso_evidencias.porcentaje >= 100 %}w-100
+  {% elif progreso_evidencias.porcentaje >= 90 %}w-90
+  {% elif progreso_evidencias.porcentaje >= 80 %}w-80
+  {% elif progreso_evidencias.porcentaje >= 70 %}w-70
+  {% elif progreso_evidencias.porcentaje >= 60 %}w-60
+  {% elif progreso_evidencias.porcentaje >= 50 %}w-50
+  {% elif progreso_evidencias.porcentaje >= 40 %}w-40
+  {% elif progreso_evidencias.porcentaje >= 30 %}w-30
+  {% elif progreso_evidencias.porcentaje >= 20 %}w-20
+  {% elif progreso_evidencias.porcentaje >= 10 %}w-10
+  {% else %}w-0
+  {% endif %}
+"></span>
+      </div>
+    </div>
+    <div class="icon">EV</div>
+  </div>
+
+  <div class="card stat">
+    <div>
+      <span class="small">Artículo científico</span>
+      <div class="metric">{{ avance_articulo.porcentaje }}%</div>
+      <div class="progress">
+        <span class="bar
+  {% if avance_articulo.porcentaje >= 100 %}w-100
+  {% elif avance_articulo.porcentaje >= 90 %}w-90
+  {% elif avance_articulo.porcentaje >= 80 %}w-80
+  {% elif avance_articulo.porcentaje >= 70 %}w-70
+  {% elif avance_articulo.porcentaje >= 60 %}w-60
+  {% elif avance_articulo.porcentaje >= 50 %}w-50
+  {% elif avance_articulo.porcentaje >= 40 %}w-40
+  {% elif avance_articulo.porcentaje >= 30 %}w-30
+  {% elif avance_articulo.porcentaje >= 20 %}w-20
+  {% elif avance_articulo.porcentaje >= 10 %}w-10
+  {% else %}w-0
+  {% endif %}
+"></span>
+      </div>
+    </div>
+    <div class="icon">AR</div>
+  </div>
+
+  <div class="card stat">
+    <div>
+      <span class="small">Cierre</span>
+      {% if puede_cerrar %}
+        <div class="metric">Listo</div>
+        <span class="badge ok">Disponible</span>
+      {% else %}
+        <div class="metric">No</div>
+        <span class="badge warn">Pendiente</span>
+      {% endif %}
+    </div>
+    <div class="icon">CI</div>
+  </div>
 </div>
 
 <div class="grid cols-2" style="margin-top:18px">
   <div class="card">
-    <h3>Próximas acciones</h3>
-    <div class="timeline">
-      <div class="item"><h4>Tutoría 7</h4><p>Programar sala virtual, registrar asistencia y asociar evidencia.</p></div>
-      <div class="item"><h4>Evidencia pendiente</h4><p>El tutor debe validar la evidencia de la tutoría 6.</p></div>
-      <div class="item"><h4>Reporte de seguimiento</h4><p>Coordinación puede revisar avances por programa y cohorte.</p></div>
-    </div>
+    <h3>Proyecto actual</h3>
+
+    {% if proyecto %}
+      <p><b>Tema:</b> {{ proyecto.titulo|default:"Sin título registrado" }}</p>
+      <p><b>Modalidad:</b> {{ proyecto.modalidad|default:"No registrada" }}</p>
+      <p><b>Estado:</b> <span class="badge">{{ proyecto.estado|default:"Sin estado" }}</span></p>
+
+      <div class="pill-row" style="margin-top:12px">
+        <a class="btn secondary smallbtn" href="{% url 'seguimiento:tutorias' %}">Tutorías</a>
+        <a class="btn secondary smallbtn" href="{% url 'seguimiento:evidencias' %}">Evidencias</a>
+        <a class="btn secondary smallbtn" href="{% url 'seguimiento:articulo' proyecto.id %}">Artículo</a>
+        <a class="btn secondary smallbtn" href="{% url 'seguimiento:checklist_cierre' proyecto.id %}">Checklist</a>
+      </div>
+    {% else %}
+      <p class="small">No se encontró un proyecto asociado a este usuario.</p>
+    {% endif %}
   </div>
+
   <div class="card">
-    <h3>Accesos rápidos</h3>
-    <div class="grid cols-2">
-      <a class="btn secondary" href="{% url 'seguimiento:tutorias' %}">Tutorías</a>
-      <a class="btn secondary" href="{% url 'seguimiento:evidencias' %}">Evidencias</a>
-      <a class="btn secondary" href="{% url 'seguimiento:reportes' %}">Reportes</a>
-      <a class="btn secondary" href="{% url 'accounts:auditoria' %}">Bitácora</a>
-    </div>
-    <p class="tiny" style="margin-top:12px">Los datos son temporales de interfaz hasta enlazar modelos y consultas ORM.</p>
+    <h3>Notificaciones recientes</h3>
+
+    {% if notificaciones %}
+      <div class="timeline">
+        {% for notificacion in notificaciones %}
+          <div class="item">
+            <h4>{{ notificacion.titulo|default:"Notificación" }}</h4>
+            <p>{{ notificacion.mensaje|default:"Sin mensaje" }}</p>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="small">No tienes notificaciones recientes.</p>
+    {% endif %}
+
+    <a class="btn secondary smallbtn" href="{% url 'seguimiento:notificaciones' %}">Ver todas</a>
+  </div>
+</div>
+
+<div class="grid cols-2" style="margin-top:18px">
+  <div class="card">
+    <h3>Tutorías pendientes</h3>
+
+    {% if tutorias_pendientes %}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>Fecha</th>
+              <th>Tema</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tutoria in tutorias_pendientes %}
+              <tr>
+                <td>{{ tutoria.numero|default:tutoria.id }}</td>
+                <td>{{ tutoria.fecha|date:"d/m/Y"|default:"Sin fecha" }}</td>
+                <td>{{ tutoria.tema|default:"Sin tema" }}</td>
+                <td><span class="badge warn">{{ tutoria.estado }}</span></td>
+                <td>
+                  <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_tutoria' tutoria.id %}">Ver</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="small">No hay tutorías pendientes.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Evidencias observadas</h3>
+
+    {% if evidencias_observadas %}
+      <div class="timeline">
+        {% for evidencia in evidencias_observadas %}
+          <div class="item">
+            <h4>{{ evidencia.titulo|default:"Evidencia observada" }}</h4>
+            <p>{{ evidencia.tipo_avance }} · {{ evidencia.fecha_carga|date:"d/m/Y" }}</p>
+            <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_evidencia' evidencia.id %}">Revisar</a>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="small">No hay evidencias observadas.</p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

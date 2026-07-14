@@ -1,0 +1,128 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Checklist de cierre</h2>
+    <p>Validación final del proceso de titulación.</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:dashboard' %}">Volver</a>
+</div>
+
+<div class="grid cols-3">
+  <div class="card">
+    <h3>Tutorías realizadas</h3>
+    <div class="metric">{{ checklist.progreso_tutorias.realizadas }}/8</div>
+    <div class="progress">
+      <span class="bar
+  {% if checklist.progreso_tutorias.porcentaje >= 100 %}w-100
+  {% elif checklist.progreso_tutorias.porcentaje >= 90 %}w-90
+  {% elif checklist.progreso_tutorias.porcentaje >= 80 %}w-80
+  {% elif checklist.progreso_tutorias.porcentaje >= 70 %}w-70
+  {% elif checklist.progreso_tutorias.porcentaje >= 60 %}w-60
+  {% elif checklist.progreso_tutorias.porcentaje >= 50 %}w-50
+  {% elif checklist.progreso_tutorias.porcentaje >= 40 %}w-40
+  {% elif checklist.progreso_tutorias.porcentaje >= 30 %}w-30
+  {% elif checklist.progreso_tutorias.porcentaje >= 20 %}w-20
+  {% elif checklist.progreso_tutorias.porcentaje >= 10 %}w-10
+  {% else %}w-0
+  {% endif %}
+"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Evidencias validadas</h3>
+    <div class="metric">{{ checklist.progreso_evidencias.validadas }}/8</div>
+    <div class="progress">
+      <span class="bar
+  {% if checklist.progreso_evidencias.porcentaje >= 100 %}w-100
+  {% elif checklist.progreso_evidencias.porcentaje >= 90 %}w-90
+  {% elif checklist.progreso_evidencias.porcentaje >= 80 %}w-80
+  {% elif checklist.progreso_evidencias.porcentaje >= 70 %}w-70
+  {% elif checklist.progreso_evidencias.porcentaje >= 60 %}w-60
+  {% elif checklist.progreso_evidencias.porcentaje >= 50 %}w-50
+  {% elif checklist.progreso_evidencias.porcentaje >= 40 %}w-40
+  {% elif checklist.progreso_evidencias.porcentaje >= 30 %}w-30
+  {% elif checklist.progreso_evidencias.porcentaje >= 20 %}w-20
+  {% elif checklist.progreso_evidencias.porcentaje >= 10 %}w-10
+  {% else %}w-0
+  {% endif %}
+"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Estado de cierre</h3>
+    {% if checklist.puede_cerrar %}
+      <div class="metric">Disponible</div>
+      <span class="badge ok">Cumple requisitos</span>
+    {% else %}
+      <div class="metric">Bloqueado</div>
+      <span class="badge danger">No cumple requisitos</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Requisitos</h3>
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Requisito</th>
+          <th>Detalle</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in checklist.items %}
+          <tr>
+            <td>{{ item.codigo }}</td>
+            <td>{{ item.nombre }}</td>
+            <td>{{ item.detalle }}</td>
+            <td>
+              {% if item.cumplido %}
+                <span class="badge ok">Cumplido</span>
+              {% else %}
+                <span class="badge danger">Pendiente</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Confirmación</h3>
+
+  <form method="post">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="badge danger">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {% for field in form %}
+      <div class="field">
+        <label>{{ field.label }}</label>
+        {{ field }}
+
+        {% if field.errors %}
+          <p class="small" style="color:#b91c1c">{{ field.errors|striptags }}</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <button class="btn" type="submit" {% if not checklist.puede_cerrar %}disabled{% endif %}>
+      Confirmar revisión
+    </button>
+  </form>
+</div>
+{% endblock %}

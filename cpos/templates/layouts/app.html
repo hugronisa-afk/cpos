@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}CPOS UTB{% endblock %}
+{% block title %}CPOS UTB | Seguimiento{% endblock %}
 
 {% block body %}
 <div class="app-shell">
   <aside class="sidebar">
-    <a class="brand" href="{% url 'landing' %}">
+    <a class="brand" href="{% url 'seguimiento:dashboard' %}">
       <img class="logo dark" src="{% static 'img/logo-utb.png' %}" alt="Logo UTB">
       <div class="brand-title">
         CPOS Titulación
-        <span>Universidad Técnica de Babahoyo</span>
+        <span>Seguimiento académico</span>
       </div>
     </a>
 
@@ -19,10 +19,21 @@
       <a href="{% url 'seguimiento:tutorias' %}">Tutorías</a>
       <a href="{% url 'seguimiento:evidencias' %}">Evidencias</a>
       <a href="{% url 'seguimiento:reportes' %}">Reportes</a>
+      <a href="{% url 'seguimiento:notificaciones' %}">Notificaciones</a>
     </nav>
   </aside>
 
   <main class="main-content">
+    {% if messages %}
+      <div style="margin-bottom:16px">
+        {% for message in messages %}
+          <div class="badge {% if message.tags == 'success' %}ok{% elif message.tags == 'error' %}danger{% else %}warn{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
     {% block content %}{% endblock %}
   </main>
 </div>
