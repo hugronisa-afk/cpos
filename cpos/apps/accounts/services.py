@@ -46,6 +46,13 @@ _PATRON_DATO_SENSIBLE = re.compile(
     r"\b\s*[:=]\s*([^\s,;]+)"
 )
 
+_DESCRIPCIONES_ESTADO_USUARIO = {
+    "activar_usuario": "Se activó una cuenta de usuario.",
+    "desactivar_usuario": "Se desactivó una cuenta de usuario.",
+    "bloquear_usuario": "Se bloqueó una cuenta de usuario.",
+    "desbloquear_usuario": "Se desbloqueó una cuenta de usuario.",
+}
+
 
 def _texto_obligatorio(valor: Any, etiqueta: str, longitud_maxima: int) -> str:
     texto = str(valor or "").strip()
@@ -133,6 +140,18 @@ def _usuario_actor(actor: Any = None, request: Any = None) -> UsuarioCPOS | None
     if isinstance(usuario_request, UsuarioCPOS):
         return usuario_request
     return None
+
+
+def _evento_cambio_estado_usuario(estado_anterior: str, estado_nuevo: str) -> tuple[str, str]:
+    if estado_nuevo == EstadoUsuario.BLOQUEADO:
+        accion = "bloquear_usuario"
+    elif estado_anterior == EstadoUsuario.BLOQUEADO and estado_nuevo == EstadoUsuario.ACTIVO:
+        accion = "desbloquear_usuario"
+    elif estado_nuevo == EstadoUsuario.ACTIVO:
+        accion = "activar_usuario"
+    else:
+        accion = "desactivar_usuario"
+    return accion, _DESCRIPCIONES_ESTADO_USUARIO[accion]
 
 
 def obtener_sigla_rol(rol: Rol | str) -> str:
@@ -269,6 +288,7 @@ def actualizar_usuario_seguro(
                 .select_related("rol")
                 .get(pk=usuario_id)
             )
+            estado_anterior = usuario_actual.estado
 
             rol_nuevo = (
                 usuario_actual.rol if rol is _NO_PROPORCIONADO else _resolver_rol(rol)
@@ -319,19 +339,40 @@ def actualizar_usuario_seguro(
                 usuario_actual.save(
                     update_fields=campos_actualizados + ["fecha_actualizacion"]
                 )
-                registrar_bitacora(
-                    usuario=_usuario_actor(actor, request),
-                    modulo="seguridad",
-                    accion="actualizar_usuario",
-                    tabla_afectada="usuarios",
-                    registro_id=usuario_actual.pk,
-                    descripcion=(
-                        "Se actualizaron campos de la cuenta: "
-                        + ", ".join(sorted(campos_actualizados))
-                        + "."
-                    ),
-                    request=request,
+                actor_bitacora = _usuario_actor(actor, request)
+                campos_datos = sorted(
+                    campo for campo in campos_actualizados if campo != "estado"
                 )
+                if campos_datos:
+                    registrar_bitacora(
+                        usuario=actor_bitacora,
+                        modulo="seguridad",
+                        accion="editar_usuario",
+                        tabla_afectada="usuarios",
+                        registro_id=usuario_actual.pk,
+                        descripcion=(
+                            "Se actualizaron campos de la cuenta: "
+                            + ", ".join(campos_datos)
+                            + "."
+                        ),
+                        request=request,
+                    )
+                if "estado" in campos_actualizados:
+                    accion_estado, descripcion_estado = _evento_cambio_estado_usuario(
+                        estado_anterior,
+                        usuario_actual.estado,
+                    )
+                    registrar_bitacora(
+                        usuario=actor_bitacora,
+                        modulo="seguridad",
+                        accion=accion_estado,
+                        tabla_afectada="usuarios",
+                        registro_id=usuario_actual.pk,
+                        descripcion=descripcion_estado,
+                        request=request,
+                    )
+                    if usuario_actual.estado != EstadoUsuario.ACTIVO:
+                        invalidar_sesiones_usuario(usuario_actual)
     except UsuarioCPOS.DoesNotExist as exc:
         raise ValidationError({"usuario": "El usuario indicado no existe."}) from exc
     except IntegrityError as exc:
@@ -465,7 +506,7 @@ def registrar_bitacora(
     tabla_limpia = str(tabla_afectada).strip()[:120] if tabla_afectada else None
     agente = None
     if request is not None:
-        agente = str(request.META.get("HTTP_USER_AGENT", "")).strip() or None
+        agente = str(request.META.get("HTTP_USER_AGENT", "")).strip()[:500] or None
 
     return Bitacora.objects.create(
         usuario=usuario if isinstance(usuario, UsuarioCPOS) else None,
