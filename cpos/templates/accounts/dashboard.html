@@ -1,0 +1,61 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<section class="role-hero role-{{ rol_actual }}">
+  <div>
+    <span class="role-kicker">Panel {{ user.rol.nombre|capfirst }}</span>
+    <h2>Bienvenido, {{ user.nombres }}</h2>
+    {% if rol_actual == 'supervisor' %}
+      <p>Supervisa la configuración institucional, la seguridad y el estado general de los expedientes.</p>
+    {% elif rol_actual == 'coordinador' %}
+      <p>Gestiona los programas, cohortes y maestrantes que se encuentran bajo tu coordinación.</p>
+    {% elif rol_actual == 'tutor' %}
+      <p>Accede a tus asignaciones, tutorías, evidencias y solicitudes académicas.</p>
+    {% else %}
+      <p>Consulta tu expediente, proyecto de titulación, tutorías y evidencias personales.</p>
+    {% endif %}
+  </div>
+  <div class="role-identity"><span>{{ user.nombre_usuario }}</span><b>{{ user.rol.nombre|capfirst }}</b></div>
+</section>
+
+{% if rol_actual == 'supervisor' %}
+  <div class="grid cols-4">
+    <a class="card stat" href="{% url 'accounts:usuarios' %}"><div><span class="small">Usuarios</span><div class="metric">{{ indicadores.usuarios }}</div><div class="tiny">{{ indicadores.usuarios_activos }} activos · {{ indicadores.usuarios_bloqueados }} bloqueados</div></div><div class="icon">US</div></a>
+    <a class="card stat" href="{% url 'accounts:programas_list' %}"><div><span class="small">Programas</span><div class="metric">{{ indicadores.programas }}</div></div><div class="icon">PR</div></a>
+    <a class="card stat" href="{% url 'accounts:cohortes_list' %}"><div><span class="small">Cohortes</span><div class="metric">{{ indicadores.cohortes }}</div></div><div class="icon">CO</div></a>
+    <a class="card stat" href="{% url 'accounts:maestrantes_list' %}"><div><span class="small">Maestrantes</span><div class="metric">{{ indicadores.maestrantes }}</div></div><div class="icon">MA</div></a>
+  </div>
+  <div class="grid cols-2">
+    <div class="card"><h3>Administración y seguridad</h3><div class="dashboard-actions"><a href="{% url 'accounts:usuarios' %}"><b>Usuarios</b><span>Crear, editar y controlar accesos.</span></a><a href="{% url 'accounts:roles_list' %}"><b>Roles y permisos</b><span>Revisar niveles de autoridad.</span></a><a href="{% url 'accounts:bitacora_list' %}"><b>Bitácora</b><span>Consultar acciones registradas.</span></a><a href="{% url 'db_status' %}"><b>Estado de la base</b><span>Comprobar la conexión segura.</span></a></div></div>
+    <div class="card"><h3>Gestión institucional</h3><div class="dashboard-actions"><a href="{% url 'accounts:programas_list' %}"><b>Programas y cohortes</b><span>Administrar la oferta académica.</span></a><a href="{% url 'accounts:maestrantes_list' %}"><b>Maestrantes</b><span>Consultar expedientes vinculados.</span></a><a href="{% url 'seguimiento:reportes' %}"><b>Reportes</b><span>Revisar el seguimiento general.</span></a><a href="{% url 'titulacion:aprobaciones' %}"><b>Aprobaciones</b><span>Acceder a decisiones académicas.</span></a></div></div>
+  </div>
+{% elif rol_actual == 'coordinador' %}
+  <div class="grid cols-4">
+    <a class="card stat" href="{% url 'accounts:programas_list' %}"><div><span class="small">Mis programas</span><div class="metric">{{ indicadores.programas }}</div></div><div class="icon">PR</div></a>
+    <a class="card stat" href="{% url 'accounts:cohortes_list' %}"><div><span class="small">Cohortes</span><div class="metric">{{ indicadores.cohortes }}</div></div><div class="icon">CO</div></a>
+    <a class="card stat" href="{% url 'accounts:maestrantes_list' %}"><div><span class="small">Maestrantes</span><div class="metric">{{ indicadores.maestrantes }}</div></div><div class="icon">MA</div></a>
+    <a class="card stat" href="{% url 'accounts:usuarios' %}"><div><span class="small">Usuarios relacionados</span><div class="metric">{{ indicadores.usuarios_relacionados }}</div></div><div class="icon">US</div></a>
+  </div>
+  <div class="grid cols-2">
+    <div class="card"><h3>Gestión académica</h3><div class="dashboard-actions"><a href="{% url 'accounts:programas_list' %}"><b>Programas</b><span>Gestionar programas asignados.</span></a><a href="{% url 'accounts:cohortes_list' %}"><b>Cohortes</b><span>Registrar periodos académicos.</span></a><a href="{% url 'accounts:maestrantes_list' %}"><b>Maestrantes</b><span>Vincular cuentas y expedientes.</span></a><a href="{% url 'titulacion:dashboard' %}"><b>Titulación</b><span>Consultar procesos académicos.</span></a></div></div>
+    <div class="card"><h3>Seguimiento</h3><div class="dashboard-actions"><a href="{% url 'seguimiento:dashboard' %}"><b>Panel de seguimiento</b><span>Revisar tutorías y evidencias.</span></a><a href="{% url 'seguimiento:reportes' %}"><b>Reportes</b><span>Consultar avances por cohorte.</span></a><a href="{% url 'titulacion:aprobaciones' %}"><b>Aprobaciones</b><span>Gestionar solicitudes pendientes.</span></a><a href="{% url 'accounts:bitacora_list' %}"><b>Mi bitácora</b><span>Consultar tus acciones registradas.</span></a></div></div>
+  </div>
+{% elif rol_actual == 'maestrante' %}
+  <div class="grid cols-3">
+    <div class="card"><span class="small">Programa</span><h3>{{ perfil_maestrante.programa.nombre|default:'Pendiente de vinculación' }}</h3></div>
+    <div class="card"><span class="small">Cohorte</span><h3>{{ perfil_maestrante.cohorte.nombre|default:'Pendiente de vinculación' }}</h3></div>
+    <div class="card"><span class="small">Estado de titulación</span><h3>{% if perfil_maestrante %}{{ perfil_maestrante.get_estado_titulacion_display }}{% else %}Sin información{% endif %}</h3></div>
+  </div>
+  {% if perfil_maestrante %}
+    <div class="alert success">Tu perfil académico está vinculado correctamente con el código de matrícula <b>{{ perfil_maestrante.codigo_matricula }}</b>.</div>
+  {% else %}
+    <div class="alert warning">Tu cuenta todavía no está vinculada a un programa y cohorte. Contacta a coordinación.</div>
+  {% endif %}
+  <div class="card"><h3>Mi proceso de titulación</h3><div class="dashboard-actions cols-3"><a href="{% url 'titulacion:expediente' %}"><b>Mi expediente</b><span>Consultar información académica.</span></a><a href="{% url 'titulacion:proyecto' %}"><b>Mi proyecto</b><span>Revisar tema, archivos y estado.</span></a><a href="{% url 'titulacion:articulo' %}"><b>Artículo científico</b><span>Continuar el avance por secciones.</span></a><a href="{% url 'seguimiento:tutorias' %}"><b>Mis tutorías</b><span>Consultar fechas y sala virtual.</span></a><a href="{% url 'seguimiento:evidencias' %}"><b>Mis evidencias</b><span>Cargar y corregir entregables.</span></a><a href="{% url 'accounts:perfil' %}"><b>Mi perfil</b><span>Actualizar datos de contacto.</span></a></div></div>
+{% else %}
+  <div class="grid cols-3"><div class="card"><span class="small">Rol institucional</span><h3>Docente tutor</h3></div><div class="card"><span class="small">Estado de cuenta</span><h3>{{ user.get_estado_display }}</h3></div><div class="card"><span class="small">Último acceso</span><h3>{{ user.last_login|date:'d/m/Y H:i'|default:'Primer acceso' }}</h3></div></div>
+  <div class="card"><h3>Trabajo de tutoría</h3><div class="dashboard-actions cols-3"><a href="{% url 'titulacion:dashboard' %}"><b>Mis asignaciones</b><span>Consultar proyectos asignados.</span></a><a href="{% url 'seguimiento:tutorias' %}"><b>Tutorías</b><span>Revisar sesiones programadas.</span></a><a href="{% url 'seguimiento:evidencias' %}"><b>Evidencias</b><span>Observar y validar avances.</span></a><a href="{% url 'titulacion:proyecto' %}"><b>Proyectos</b><span>Revisar documentación académica.</span></a><a href="{% url 'titulacion:aprobaciones' %}"><b>Solicitudes</b><span>Consultar cambios y aprobaciones.</span></a><a href="{% url 'accounts:perfil' %}"><b>Mi perfil</b><span>Actualizar datos de contacto.</span></a></div></div>
+{% endif %}
+
+<div class="card account-security-strip"><div><h3>Seguridad de la cuenta</h3><p class="small">El acceso está asociado exclusivamente a <b>{{ user.nombre_usuario }}</b>.</p></div><div class="actions"><span class="badge ok">Cuenta activa</span><span class="badge">{{ user.rol.nombre|capfirst }}</span><a class="btn secondary smallbtn" href="{% url 'accounts:perfil' %}">Actualizar perfil</a></div></div>
+{% endblock %}

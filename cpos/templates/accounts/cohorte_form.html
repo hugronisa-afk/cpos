@@ -1,0 +1,6 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>{% if modo == 'crear' %}Crear cohorte{% else %}Editar cohorte{% endif %}</h2><p>La fecha de finalización debe ser igual o posterior al inicio.</p></div><a class="btn secondary" href="{% url 'accounts:cohortes_list' %}">Volver</a></div>
+<form class="card form-card" method="post" novalidate>{% csrf_token %}{% include 'accounts/partials/form_fields.html' %}<div class="form-actions"><button class="btn" type="submit">Guardar cohorte</button><a class="btn secondary" href="{% url 'accounts:cohortes_list' %}">Cancelar</a></div></form>
+{% endblock %}

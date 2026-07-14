@@ -1,0 +1,11 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>Cohortes</h2><p>Periodos académicos de los programas bajo tu alcance.</p></div><a class="btn" href="{% url 'accounts:cohorte_create' %}">Crear cohorte</a></div>
+<form class="card filter-bar filter-compact" method="get"><div class="field"><label for="programa">Programa</label><select id="programa" name="programa"><option value="">Todos</option>{% for programa in programas %}<option value="{{ programa.pk }}"{% if programa_seleccionado == programa.pk|stringformat:'s' %} selected{% endif %}>{{ programa.nombre }}</option>{% endfor %}</select></div><div class="filter-actions"><button class="btn" type="submit">Filtrar</button><a class="btn secondary" href="{% url 'accounts:cohortes_list' %}">Limpiar</a></div></form>
+<div class="table-wrap"><table class="table"><thead><tr><th>Cohorte</th><th>Programa</th><th>Inicio</th><th>Fin</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+  {% for cohorte in pagina %}<tr><td><b>{{ cohorte.nombre }}</b></td><td>{{ cohorte.programa.nombre }}</td><td>{{ cohorte.fecha_inicio|date:'d/m/Y' }}</td><td>{{ cohorte.fecha_fin|date:'d/m/Y' }}</td><td>{% if cohorte.estado == 'activa' %}<span class="badge ok">Activa</span>{% elif cohorte.estado == 'cerrada' %}<span class="badge black">Cerrada</span>{% else %}<span class="badge warn">Inactiva</span>{% endif %}</td><td><div class="actions"><a class="btn secondary smallbtn" href="{% url 'accounts:cohorte_detail' cohorte.pk %}">Ver</a><a class="btn secondary smallbtn" href="{% url 'accounts:cohorte_update' cohorte.pk %}">Editar</a></div></td></tr>
+  {% empty %}<tr><td colspan="6"><div class="empty-state">No hay cohortes disponibles.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% include 'accounts/partials/pagination.html' %}
+{% endblock %}

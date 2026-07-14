@@ -1,0 +1,11 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><span class="badge">{{ programa.codigo }}</span><h2>{{ programa.nombre }}</h2><p>{{ programa.descripcion|default:'Sin descripción registrada.' }}</p></div><div class="actions"><a class="btn secondary" href="{% url 'accounts:programas_list' %}">Volver</a><a class="btn" href="{% url 'accounts:programa_update' programa.pk %}">Editar</a></div></div>
+<div class="grid cols-3">
+  <div class="card"><span class="tiny">Coordinador</span><h3>{{ programa.coordinador.nombre_completo|default:'Sin asignar' }}</h3></div>
+  <div class="card"><span class="tiny">Estado</span><h3>{{ programa.get_estado_display }}</h3></div>
+  <div class="card"><span class="tiny">Cohortes</span><div class="metric">{{ cohortes|length }}</div></div>
+</div>
+<div class="card"><div class="card-heading"><h3>Cohortes del programa</h3><a class="btn secondary smallbtn" href="{% url 'accounts:cohorte_create' %}">Crear cohorte</a></div><div class="table-wrap"><table class="table"><thead><tr><th>Cohorte</th><th>Periodo</th><th>Estado</th><th></th></tr></thead><tbody>{% for cohorte in cohortes %}<tr><td><b>{{ cohorte.nombre }}</b></td><td>{{ cohorte.fecha_inicio|date:'d/m/Y' }} – {{ cohorte.fecha_fin|date:'d/m/Y' }}</td><td>{{ cohorte.get_estado_display }}</td><td><a class="btn secondary smallbtn" href="{% url 'accounts:cohorte_detail' cohorte.pk %}">Ver</a></td></tr>{% empty %}<tr><td colspan="4"><div class="empty-state">Este programa todavía no tiene cohortes.</div></td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

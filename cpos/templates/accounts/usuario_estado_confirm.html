@@ -1,0 +1,14 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="card confirm-card">
+  <span class="badge warn">Confirmación requerida</span>
+  <h2>Cambiar estado de usuario</h2>
+  <p>Vas a cambiar el estado de <b>{{ usuario_cpos.nombre_completo }}</b>. Esta acción afectará su acceso al sistema.</p>
+  <form method="post">
+    {% csrf_token %}
+    {% include 'accounts/partials/form_fields.html' %}
+    <div class="form-actions"><button class="btn danger" type="submit">Confirmar cambio</button><a class="btn secondary" href="{% url 'accounts:usuario_detail' usuario_cpos.pk %}">Cancelar</a></div>
+  </form>
+</div>
+{% endblock %}

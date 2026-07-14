@@ -1,0 +1,10 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>Programas de posgrado</h2><p>Programas visibles según tu ámbito de coordinación.</p></div><a class="btn" href="{% url 'accounts:programa_create' %}">Crear programa</a></div>
+<div class="table-wrap"><table class="table"><thead><tr><th>Código</th><th>Programa</th><th>Coordinador</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+  {% for programa in pagina %}<tr><td><b>{{ programa.codigo }}</b></td><td>{{ programa.nombre }}{% if programa.descripcion %}<div class="tiny">{{ programa.descripcion|truncatechars:100 }}</div>{% endif %}</td><td>{{ programa.coordinador.nombre_completo|default:'Sin asignar' }}</td><td>{% if programa.estado == 'activo' %}<span class="badge ok">Activo</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</td><td><div class="actions"><a class="btn secondary smallbtn" href="{% url 'accounts:programa_detail' programa.pk %}">Ver</a><a class="btn secondary smallbtn" href="{% url 'accounts:programa_update' programa.pk %}">Editar</a></div></td></tr>
+  {% empty %}<tr><td colspan="5"><div class="empty-state">No hay programas disponibles.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% include 'accounts/partials/pagination.html' %}
+{% endblock %}

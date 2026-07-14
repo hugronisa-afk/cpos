@@ -1,0 +1,6 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><span class="badge">{{ maestrante.codigo_matricula }}</span><h2>{{ maestrante.usuario.nombre_completo }}</h2><p>{{ maestrante.usuario.nombre_usuario }}</p></div><div class="actions"><a class="btn secondary" href="{% url 'accounts:maestrantes_list' %}">Volver</a><a class="btn" href="{% url 'accounts:maestrante_update' maestrante.pk %}">Editar</a></div></div>
+<div class="grid cols-2"><div class="card"><h3>Datos académicos</h3><dl class="detail-list"><div><dt>Programa</dt><dd>{{ maestrante.programa.nombre }}</dd></div><div><dt>Cohorte</dt><dd>{{ maestrante.cohorte.nombre }}</dd></div><div><dt>Matrícula</dt><dd>{{ maestrante.codigo_matricula }}</dd></div><div><dt>Estado de titulación</dt><dd><span class="badge">{{ maestrante.get_estado_titulacion_display }}</span></dd></div></dl></div><div class="card"><h3>Datos de contacto</h3><dl class="detail-list"><div><dt>Cédula</dt><dd>{{ maestrante.usuario.cedula }}</dd></div><div><dt>Correo</dt><dd>{{ maestrante.usuario.correo }}</dd></div><div><dt>Teléfono</dt><dd>{{ maestrante.usuario.telefono|default:'No registrado' }}</dd></div><div><dt>Estado de cuenta</dt><dd>{{ maestrante.usuario.get_estado_display }}</dd></div></dl></div></div>
+{% endblock %}
