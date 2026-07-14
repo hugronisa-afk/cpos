@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Acceso denegado | CPOS UTB{% endblock %}
+{% block body %}
+<main class="error-page">
+  <section class="card error-card">
+    <img class="logo dark" src="{% static 'img/logo-utb.png' %}" alt="Logo Universidad Técnica de Babahoyo">
+    <span class="error-code">403</span>
+    <h1>Acceso denegado</h1>
+    <p>{{ mensaje|default:'No tienes autorización para acceder a este recurso.' }}</p>
+    <div class="actions"><a class="btn" href="{% url 'accounts:dashboard' %}">Volver al panel</a><a class="btn secondary" href="{% url 'accounts:perfil' %}">Ver mi perfil</a></div>
+  </section>
+</main>
+{% endblock %}

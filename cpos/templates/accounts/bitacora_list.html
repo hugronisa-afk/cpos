@@ -1,0 +1,11 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>Bitácora de acciones</h2><p>Registro de seguridad visible según tu alcance de usuario.</p></div></div>
+<form class="card filter-bar" method="get"><div class="field"><label for="modulo">Módulo</label><select id="modulo" name="modulo"><option value="">Todos</option>{% for modulo in modulos %}<option value="{{ modulo }}"{% if modulo_seleccionado == modulo %} selected{% endif %}>{{ modulo|capfirst }}</option>{% endfor %}</select></div><div class="field"><label for="accion">Acción</label><input id="accion" name="accion" value="{{ accion }}" placeholder="Buscar acción"></div><div class="filter-actions"><button class="btn" type="submit">Filtrar</button><a class="btn secondary" href="{% url 'accounts:bitacora_list' %}">Limpiar</a></div></form>
+<div class="table-wrap"><table class="table audit-table"><thead><tr><th>Fecha</th><th>Usuario</th><th>Módulo</th><th>Acción</th><th>Detalle</th><th>IP</th></tr></thead><tbody>
+  {% for registro in pagina %}<tr><td>{{ registro.fecha_creacion|date:'d/m/Y H:i:s' }}</td><td>{% if registro.usuario %}<b>{{ registro.usuario.nombre_usuario }}</b><div class="tiny">{{ registro.usuario.rol.nombre|capfirst }}</div>{% else %}<span class="muted">Sistema</span>{% endif %}</td><td><span class="badge">{{ registro.modulo|capfirst }}</span></td><td><b>{{ registro.accion }}</b>{% if registro.tabla_afectada %}<div class="tiny">{{ registro.tabla_afectada }}{% if registro.registro_id %} #{{ registro.registro_id }}{% endif %}</div>{% endif %}</td><td>{{ registro.descripcion|default:'Sin detalle' }}</td><td>{{ registro.direccion_ip|default:'—' }}</td></tr>
+  {% empty %}<tr><td colspan="6"><div class="empty-state">No hay registros para los filtros seleccionados.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% include 'accounts/partials/pagination.html' %}
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head">
+  <div><h2>{{ usuario_cpos.nombre_completo }}</h2><p>Cuenta institucional {{ usuario_cpos.nombre_usuario }}.</p></div>
+  <div class="actions"><a class="btn secondary" href="{% url 'accounts:usuarios' %}">Volver</a><a class="btn" href="{% url 'accounts:usuario_update' usuario_cpos.pk %}">Editar</a></div>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Datos de la cuenta</h3>
+    <dl class="detail-list">
+      <div><dt>Nombre de usuario</dt><dd>{{ usuario_cpos.nombre_usuario }}</dd></div>
+      <div><dt>Cédula</dt><dd>{{ usuario_cpos.cedula }}</dd></div>
+      <div><dt>Correo</dt><dd>{{ usuario_cpos.correo }}</dd></div>
+      <div><dt>Teléfono</dt><dd>{{ usuario_cpos.telefono|default:'No registrado' }}</dd></div>
+      <div><dt>Rol</dt><dd><span class="badge">{{ usuario_cpos.rol.nombre|capfirst }}</span></dd></div>
+      <div><dt>Estado</dt><dd>{% if usuario_cpos.estado == 'activo' %}<span class="badge ok">Activo</span>{% elif usuario_cpos.estado == 'bloqueado' %}<span class="badge danger">Bloqueado</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</dd></div>
+      <div><dt>Último acceso</dt><dd>{{ usuario_cpos.last_login|date:'d/m/Y H:i'|default:'Sin acceso registrado' }}</dd></div>
+      <div><dt>Creación</dt><dd>{{ usuario_cpos.fecha_creacion|date:'d/m/Y H:i' }}</dd></div>
+    </dl>
+  </div>
+  <div class="card">
+    <h3>Permisos efectivos</h3>
+    <div class="pill-row permission-list">{% for permiso in permisos_efectivos %}<span class="badge" title="{{ permiso.nombre }}">{{ permiso.codigo }}</span>{% empty %}<p class="small">Este usuario no tiene permisos activos.</p>{% endfor %}</div>
+  </div>
+</div>
+
+<div class="card danger-zone">
+  <h3>Seguridad y estado</h3>
+  <div class="actions">
+    <a class="btn secondary" href="{% url 'accounts:usuario_cambiar_password' usuario_cpos.pk %}">Cambiar contraseña</a>
+    {% if user.pk != usuario_cpos.pk %}
+      {% if usuario_cpos.estado == 'bloqueado' %}
+        <form method="post" action="{% url 'accounts:usuario_desbloquear' usuario_cpos.pk %}">{% csrf_token %}<button class="btn" type="submit">Desbloquear</button></form>
+      {% else %}
+        <form method="post" action="{% url 'accounts:usuario_bloquear' usuario_cpos.pk %}">{% csrf_token %}<button class="btn danger" type="submit">Bloquear</button></form>
+      {% endif %}
+      <form method="post" action="{% url 'accounts:usuario_toggle_estado' usuario_cpos.pk %}">{% csrf_token %}<button class="btn secondary" type="submit">{% if usuario_cpos.estado == 'activo' %}Desactivar{% else %}Activar{% endif %}</button></form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

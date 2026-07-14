@@ -1,0 +1,25 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head">
+  <div><h2>Mi perfil</h2><p>Actualiza tus datos de contacto. El nombre de usuario, la cédula y el rol son administrados por CPOS.</p></div>
+  <a class="btn secondary" href="{% url 'accounts:dashboard' %}">Volver al panel</a>
+</div>
+<div class="grid cols-2 profile-grid">
+  <div class="card">
+    <h3>Identidad institucional</h3>
+    <dl class="detail-list">
+      <div><dt>Nombre de usuario</dt><dd>{{ user.nombre_usuario }}</dd></div>
+      <div><dt>Cédula</dt><dd>{{ user.cedula }}</dd></div>
+      <div><dt>Rol</dt><dd><span class="badge">{{ user.rol.nombre|capfirst }}</span></dd></div>
+      <div><dt>Estado</dt><dd><span class="badge ok">{{ user.get_estado_display }}</span></dd></div>
+    </dl>
+  </div>
+  <form class="card form-card" method="post" novalidate>
+    {% csrf_token %}
+    <h3>Datos de contacto</h3>
+    {% include 'accounts/partials/form_fields.html' %}
+    <div class="form-actions"><button class="btn" type="submit">Guardar cambios</button></div>
+  </form>
+</div>
+{% endblock %}

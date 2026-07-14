@@ -1,0 +1,11 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>Maestrantes</h2><p>Perfiles académicos asociados a programas y cohortes.</p></div><a class="btn" href="{% url 'accounts:maestrante_create' %}">Registrar maestrante</a></div>
+<form class="card filter-bar filter-compact" method="get"><div class="field"><label for="q">Buscar</label><input id="q" name="q" value="{{ busqueda }}" placeholder="Nombre o matrícula"></div><div class="filter-actions"><button class="btn" type="submit">Buscar</button><a class="btn secondary" href="{% url 'accounts:maestrantes_list' %}">Limpiar</a></div></form>
+<div class="table-wrap"><table class="table"><thead><tr><th>Matrícula</th><th>Maestrante</th><th>Programa</th><th>Cohorte</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
+  {% for maestrante in pagina %}<tr><td><b>{{ maestrante.codigo_matricula }}</b></td><td>{{ maestrante.usuario.nombre_completo }}<div class="tiny">{{ maestrante.usuario.nombre_usuario }}</div></td><td>{{ maestrante.programa.nombre }}</td><td>{{ maestrante.cohorte.nombre }}</td><td><span class="badge">{{ maestrante.get_estado_titulacion_display }}</span></td><td><div class="actions"><a class="btn secondary smallbtn" href="{% url 'accounts:maestrante_detail' maestrante.pk %}">Ver</a><a class="btn secondary smallbtn" href="{% url 'accounts:maestrante_update' maestrante.pk %}">Editar</a></div></td></tr>
+  {% empty %}<tr><td colspan="6"><div class="empty-state">No se encontraron maestrantes.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% include 'accounts/partials/pagination.html' %}
+{% endblock %}

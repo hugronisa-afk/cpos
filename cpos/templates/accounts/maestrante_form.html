@@ -1,0 +1,6 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>{% if modo == 'crear' %}Registrar maestrante{% else %}Editar maestrante{% endif %}</h2><p>La cuenta debe tener rol maestrante y la cohorte debe pertenecer al programa.</p></div><a class="btn secondary" href="{% url 'accounts:maestrantes_list' %}">Volver</a></div>
+<form class="card form-card" method="post" novalidate>{% csrf_token %}{% include 'accounts/partials/form_fields.html' %}<div class="form-actions"><button class="btn" type="submit">Guardar maestrante</button><a class="btn secondary" href="{% url 'accounts:maestrantes_list' %}">Cancelar</a></div></form>
+{% endblock %}

@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
-from pathlib import Path
 from decouple import config
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,12 +20,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-$2vlhgru#s*8!(42^d6u&zqummo)lr1$g@3_(+(bi7j=%^4yl-'
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+    if host.strip()
+]
 
 
 # Application definition
@@ -77,8 +80,6 @@ WSGI_APPLICATION = 'cpos.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-from decouple import config
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -89,6 +90,9 @@ DATABASES = {
         'PORT': config('DB_PORT', default='5432'),
         'OPTIONS': {
             'sslmode': 'require',
+            # Las tablas institucionales viven en el esquema `cpos`, mientras
+            # que las tablas internas de Django permanecen en `public`.
+            'options': '-c search_path=cpos,public,extensions',
         },
     }
 }
@@ -132,5 +136,32 @@ STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
 LOGIN_URL = 'accounts:login'
-LOGIN_REDIRECT_URL = 'landing'
+LOGIN_REDIRECT_URL = 'accounts:dashboard'
 LOGOUT_REDIRECT_URL = 'accounts:login'
+
+# Autenticación institucional tradicional. No se usa Supabase Auth y tampoco
+# se cambia AUTH_USER_MODEL porque las migraciones estándar ya fueron aplicadas.
+AUTHENTICATION_BACKENDS = [
+    'apps.accounts.backends.UsuarioCPOSBackend',
+]
+
+# Seguridad base de las sesiones Django. En desarrollo local, DEBUG permite
+# cookies sin HTTPS; en producción el valor predeterminado exige HTTPS.
+SESSION_COOKIE_NAME = 'cpos_sessionid'
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = config(
+    'SESSION_COOKIE_SECURE',
+    default=not DEBUG,
+    cast=bool,
+)
+SESSION_COOKIE_AGE = config('SESSION_COOKIE_AGE', default=28800, cast=int)
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_SAVE_EVERY_REQUEST = False
+
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SECURE = config(
+    'CSRF_COOKIE_SECURE',
+    default=not DEBUG,
+    cast=bool,
+)

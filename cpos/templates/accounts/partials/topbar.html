@@ -1,0 +1,16 @@
+<header class="topbar">
+  <div>
+    <h1>{{ page_title|default:'CPOS UTB' }}</h1>
+    <div class="small">{{ page_subtitle|default:'Sistema de Gestión de Titulación de Posgrado' }}</div>
+  </div>
+  <div class="topbar-actions">
+    <a class="user-chip" href="{% url 'accounts:perfil' %}">
+      <span class="user-avatar" aria-hidden="true">{{ user.nombres|first|upper }}{{ user.apellidos|first|upper }}</span>
+      <span><b>{{ user.nombre_usuario }}</b><small>{{ user.rol.nombre|capfirst }}</small></span>
+    </a>
+    <form class="logout-inline" method="post" action="{% url 'accounts:logout' %}">
+      {% csrf_token %}
+      <button class="btn secondary smallbtn" type="submit">Cerrar sesión</button>
+    </form>
+  </div>
+</header>
