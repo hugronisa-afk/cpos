@@ -1,0 +1,11 @@
+{% if pagina.paginator.num_pages > 1 %}
+  <nav class="pagination" aria-label="Paginación">
+    {% if pagina.has_previous %}
+      <a class="btn secondary smallbtn" href="?page={{ pagina.previous_page_number }}{% if busqueda %}&q={{ busqueda|urlencode }}{% endif %}{% if rol_seleccionado %}&rol={{ rol_seleccionado|urlencode }}{% endif %}{% if estado_seleccionado %}&estado={{ estado_seleccionado|urlencode }}{% endif %}{% if programa_seleccionado %}&programa={{ programa_seleccionado|urlencode }}{% endif %}{% if modulo_seleccionado %}&modulo={{ modulo_seleccionado|urlencode }}{% endif %}{% if accion %}&accion={{ accion|urlencode }}{% endif %}">Anterior</a>
+    {% endif %}
+    <span>Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</span>
+    {% if pagina.has_next %}
+      <a class="btn secondary smallbtn" href="?page={{ pagina.next_page_number }}{% if busqueda %}&q={{ busqueda|urlencode }}{% endif %}{% if rol_seleccionado %}&rol={{ rol_seleccionado|urlencode }}{% endif %}{% if estado_seleccionado %}&estado={{ estado_seleccionado|urlencode }}{% endif %}{% if programa_seleccionado %}&programa={{ programa_seleccionado|urlencode }}{% endif %}{% if modulo_seleccionado %}&modulo={{ modulo_seleccionado|urlencode }}{% endif %}{% if accion %}&accion={{ accion|urlencode }}{% endif %}">Siguiente</a>
+    {% endif %}
+  </nav>
+{% endif %}

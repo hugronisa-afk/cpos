@@ -1,0 +1,10 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>Permisos de {{ rol.nombre|capfirst }}</h2><p>Marca únicamente las acciones que debe poder realizar este rol.</p></div><a class="btn secondary" href="{% url 'accounts:rol_detail' rol.pk %}">Cancelar</a></div>
+<form class="card form-card form-wide" method="post" novalidate>
+  {% csrf_token %}
+  {% include 'accounts/partials/form_fields.html' %}
+  <div class="form-actions"><button class="btn" type="submit">Guardar asignación</button></div>
+</form>
+{% endblock %}

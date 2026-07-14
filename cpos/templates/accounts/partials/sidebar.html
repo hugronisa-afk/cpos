@@ -1,0 +1,50 @@
+{% load static %}
+<aside class="sidebar" aria-label="Navegación principal">
+  <a class="side-brand" href="{% url 'accounts:dashboard' %}">
+    <img class="logo" src="{% static 'img/logo-utb.png' %}" alt="Logo Universidad Técnica de Babahoyo">
+    <div><b>CPOS Titulación</b><span>Universidad Técnica de Babahoyo</span></div>
+  </a>
+
+  <nav>
+    <div class="side-label">Mi cuenta</div>
+    <a class="{% if active_page == 'dashboard' %}active{% endif %}" href="{% url 'accounts:dashboard' %}"><span>▸</span>Panel principal</a>
+    <a class="{% if active_page == 'perfil' %}active{% endif %}" href="{% url 'accounts:perfil' %}"><span>▸</span>Mi perfil</a>
+
+    {% if user.rol.nombre == 'coordinador' or user.rol.nombre == 'supervisor' %}
+      <div class="side-separator"></div>
+      <div class="side-label">Administración</div>
+      <a class="{% if active_page == 'usuarios' %}active{% endif %}" href="{% url 'accounts:usuarios' %}"><span>▸</span>Usuarios</a>
+      <a class="{% if active_page == 'roles' %}active{% endif %}" href="{% url 'accounts:roles_list' %}"><span>▸</span>Roles</a>
+      <a class="{% if active_page == 'permisos' %}active{% endif %}" href="{% url 'accounts:permisos_list' %}"><span>▸</span>Permisos</a>
+      <a class="{% if active_page == 'programas' %}active{% endif %}" href="{% url 'accounts:programas_list' %}"><span>▸</span>Programas</a>
+      <a class="{% if active_page == 'cohortes' %}active{% endif %}" href="{% url 'accounts:cohortes_list' %}"><span>▸</span>Cohortes</a>
+      <a class="{% if active_page == 'maestrantes' %}active{% endif %}" href="{% url 'accounts:maestrantes_list' %}"><span>▸</span>Maestrantes</a>
+      <a class="{% if active_page == 'bitacora' %}active{% endif %}" href="{% url 'accounts:bitacora_list' %}"><span>▸</span>Bitácora</a>
+      <a class="{% if active_page == 'db' %}active{% endif %}" href="{% url 'db_status' %}"><span>▸</span>Estado de BD</a>
+    {% endif %}
+
+    <div class="side-separator"></div>
+    <div class="side-label">Proceso académico</div>
+    {% if user.rol.nombre == 'maestrante' %}
+      <a href="{% url 'titulacion:expediente' %}"><span>▸</span>Mi expediente</a>
+      <a href="{% url 'titulacion:proyecto' %}"><span>▸</span>Mi proyecto</a>
+      <a href="{% url 'seguimiento:tutorias' %}"><span>▸</span>Mis tutorías</a>
+      <a href="{% url 'seguimiento:evidencias' %}"><span>▸</span>Mis evidencias</a>
+    {% elif user.rol.nombre == 'tutor' %}
+      <a href="{% url 'titulacion:dashboard' %}"><span>▸</span>Asignaciones</a>
+      <a href="{% url 'seguimiento:tutorias' %}"><span>▸</span>Tutorías</a>
+      <a href="{% url 'seguimiento:evidencias' %}"><span>▸</span>Evidencias</a>
+      <a href="{% url 'titulacion:aprobaciones' %}"><span>▸</span>Solicitudes</a>
+    {% else %}
+      <a href="{% url 'titulacion:dashboard' %}"><span>▸</span>Titulación</a>
+      <a href="{% url 'seguimiento:dashboard' %}"><span>▸</span>Seguimiento</a>
+      <a href="{% url 'seguimiento:reportes' %}"><span>▸</span>Reportes</a>
+    {% endif %}
+  </nav>
+
+  <footer>
+    <div class="tiny">Sesión activa</div>
+    <b>{{ user.nombre_completo|default:user.nombre_usuario }}</b>
+    <div class="small">{{ user.rol.nombre|capfirst }}</div>
+  </footer>
+</aside>

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ page_title|default:'Panel' }} | CPOS UTB{% endblock %}
+
+{% block body %}
+<a class="skip-link" href="#contenido-principal">Saltar al contenido</a>
+<div class="app">
+  {% include 'accounts/partials/sidebar.html' %}
+  <main class="main" id="contenido-principal">
+    {% include 'accounts/partials/topbar.html' %}
+    <div class="content content-stack">
+      {% include 'accounts/partials/messages.html' %}
+      {% block accounts_content %}{% endblock %}
+    </div>
+  </main>
+</div>
+{% endblock %}

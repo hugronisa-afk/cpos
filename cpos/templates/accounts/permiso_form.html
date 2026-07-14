@@ -1,0 +1,10 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head"><div><h2>{% if modo == 'crear' %}Crear permiso{% else %}Editar permiso{% endif %}</h2><p>El código se normaliza en mayúsculas y debe ser único.</p></div><a class="btn secondary" href="{% url 'accounts:permisos_list' %}">Volver</a></div>
+<form class="card form-card" method="post" novalidate>
+  {% csrf_token %}
+  {% include 'accounts/partials/form_fields.html' %}
+  <div class="form-actions"><button class="btn" type="submit">Guardar permiso</button><a class="btn secondary" href="{% url 'accounts:permisos_list' %}">Cancelar</a></div>
+</form>
+{% endblock %}
