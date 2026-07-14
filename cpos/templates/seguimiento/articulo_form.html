@@ -1,0 +1,36 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Artículo científico</h2>
+    <p>Editar sección o registrar envío a revista.</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:articulo' proyecto.id %}">Volver</a>
+</div>
+
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="badge danger">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {% for field in form %}
+      <div class="field">
+        <label>{{ field.label }}</label>
+        {{ field }}
+
+        {% if field.errors %}
+          <p class="small" style="color:#b91c1c">{{ field.errors|striptags }}</p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <button class="btn" type="submit">Guardar</button>
+  </form>
+</div>
+{% endblock %}

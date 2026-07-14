@@ -1,0 +1,68 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Tutorías</h2>
+    <p>Listado de tutorías programadas, realizadas, reprogramadas o canceladas.</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:dashboard' %}">Volver al dashboard</a>
+</div>
+
+<div class="card">
+  <h3>Listado de tutorías</h3>
+
+  {% if tutorias %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>N°</th>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Tema</th>
+            <th>Tutor</th>
+            <th>Estado</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tutoria in tutorias %}
+            <tr>
+              <td>{{ tutoria.numero|default:tutoria.id }}</td>
+              <td>{{ tutoria.fecha|date:"d/m/Y"|default:"Sin fecha" }}</td>
+              <td>
+                {{ tutoria.hora_inicio|time:"H:i"|default:"--" }}
+                -
+                {{ tutoria.hora_fin|time:"H:i"|default:"--" }}
+              </td>
+              <td>{{ tutoria.tema|default:"Sin tema" }}</td>
+              <td>
+                {% if tutoria.tutor %}
+                  {{ tutoria.tutor }}
+                {% else %}
+                  Sin tutor
+                {% endif %}
+              </td>
+              <td>
+                {% if tutoria.estado == "realizada" %}
+                  <span class="badge ok">{{ tutoria.estado }}</span>
+                {% elif tutoria.estado == "cancelada" or tutoria.estado == "no_realizada" %}
+                  <span class="badge danger">{{ tutoria.estado }}</span>
+                {% else %}
+                  <span class="badge warn">{{ tutoria.estado }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_tutoria' tutoria.id %}">Ver detalle</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="small">No existen tutorías registradas para tu usuario.</p>
+  {% endif %}
+</div>
+{% endblock %}

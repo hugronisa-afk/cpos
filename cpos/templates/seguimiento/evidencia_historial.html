@@ -1,0 +1,59 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Historial de evidencia</h2>
+    <p>{{ evidencia.titulo|default:"Sin título" }}</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:detalle_evidencia' evidencia.id %}">Volver</a>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Versiones</h3>
+
+    {% if versiones %}
+      <div class="timeline">
+        {% for version in versiones %}
+          <div class="item">
+            <h4>Versión {{ version.numero_version }}</h4>
+            <p>{{ version.descripcion_cambios|default:"Sin descripción" }}</p>
+            <p class="tiny">{{ version.creado_en|date:"d/m/Y H:i" }}</p>
+
+            <div class="pill-row">
+              {% if version.archivo %}
+                <a class="btn secondary smallbtn" href="{{ version.archivo.url }}" target="_blank">Archivo</a>
+              {% endif %}
+
+              {% if version.enlace %}
+                <a class="btn secondary smallbtn" href="{{ version.enlace }}" target="_blank">Enlace</a>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="small">No hay versiones registradas.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Validaciones</h3>
+
+    {% if validaciones %}
+      <div class="timeline">
+        {% for validacion in validaciones %}
+          <div class="item">
+            <h4>{{ validacion.estado|title }}</h4>
+            <p>{{ validacion.observaciones|default:"Sin observaciones" }}</p>
+            <p class="tiny">{{ validacion.fecha_validacion|date:"d/m/Y H:i" }}</p>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="small">No hay validaciones registradas.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
