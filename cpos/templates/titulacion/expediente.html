@@ -1,14 +1,19 @@
-{% extends 'layouts/app.html' %}
+{% extends 'titulacion/base_titulacion.html' %}
 
-{% block content %}
-<div class="page-head"><div><h2>Expediente de titulación</h2><p>Centraliza datos del maestrante, tema aprobado, modalidad, tutor asignado y avance general.</p></div><div class="actions"><button class="btn secondary" data-toast="Expediente actualizado en la maqueta">Guardar cambios</button><a class="btn" href="{% url 'titulacion:proyecto' %}">Gestionar proyecto</a></div></div>
+{% block titulacion_content %}
+<div class="page-head"><div><h2>Expediente de titulación</h2><p>La selección está limitada al alcance del rol {{ rol_actual|title }}.</p></div></div>
+{% if proyectos.count > 1 %}
+<form method="get" class="card" style="margin-bottom:18px"><div class="field"><label>Expediente</label><select name="proyecto" class="form-control" onchange="this.form.submit()">{% for item in proyectos %}<option value="{{ item.pk }}" {% if proyecto.pk == item.pk %}selected{% endif %}>{{ item.maestrante.usuario.nombre_completo }} · {{ item.tema|truncatechars:80 }}</option>{% endfor %}</select></div></form>
+{% endif %}
+{% if proyecto %}
 <div class="grid cols-3">
-  <div class="card"><h3>Datos del maestrante</h3><p><b>Nombre:</b> María Fernanda López</p><p><b>Programa:</b> Maestría en Tecnología e Innovación</p><p><b>Cohorte:</b> 2026-A</p><span class="badge ok">Activo en titulación</span></div>
-  <div class="card"><h3>Proyecto</h3><p><b>Tema:</b> Plataforma web para control de tutorías de posgrado.</p><p><b>Modalidad:</b> Artículo científico</p><p><b>Resolución:</b> CPOS-UTB-2026-014</p><span class="badge">Tema aprobado</span></div>
-  <div class="card"><h3>Tutor asignado</h3><p><b>Docente:</b> Dr. Luis Andrade</p><p><b>Área:</b> Ingeniería de software</p><p><b>Fecha:</b> 12/06/2026</p><span class="badge ok">Notificado</span></div>
+  <div class="card"><h3>Maestrante</h3><p><b>Nombre:</b> {{ proyecto.maestrante.usuario.nombre_completo }}</p><p><b>Programa:</b> {{ proyecto.maestrante.programa.nombre }}</p><p><b>Cohorte:</b> {{ proyecto.maestrante.cohorte.nombre }}</p><span class="badge">{{ proyecto.maestrante.get_estado_titulacion_display }}</span></div>
+  <div class="card"><h3>Proyecto</h3><p><b>Tema:</b> {{ proyecto.tema }}</p><p><b>Modalidad:</b> {{ proyecto.get_modalidad_display }}</p><p><b>Resolución:</b> {{ proyecto.numero_resolucion|default:'No registrada' }}</p><span class="badge">{{ proyecto.get_estado_display }}</span></div>
+  <div class="card"><h3>Tutor asignado</h3>{% if asignacion %}<p><b>Docente:</b> {{ asignacion.tutor.usuario.nombre_completo }}</p><p><b>Área:</b> {{ asignacion.tutor.especialidad|default:'No registrada' }}</p><p><b>Fecha:</b> {{ asignacion.fecha_asignacion }}</p><span class="badge ok">Asignación activa</span>{% else %}<p>No existe tutor asignado.</p>{% endif %}</div>
 </div>
 <div class="grid cols-2" style="margin-top:18px">
-  <div class="card"><h3>Carga documental inicial</h3><div class="field"><label>Tema de titulación</label><input value="Plataforma web para control de tutorías de posgrado"></div><div class="grid cols-2"><div class="field"><label>Archivo Word</label><input type="file" accept=".doc,.docx"></div><div class="field"><label>Archivo PDF</label><input type="file" accept=".pdf"></div></div><button class="btn" data-toast="Documentos cargados en modo maqueta">Cargar documentos</button></div>
-  <div class="card"><h3>Trazabilidad del expediente</h3><div class="timeline"><div class="item"><h4>Carga del tema</h4><p>03/06/2026 · maestrante@utb.edu.ec</p></div><div class="item"><h4>Visto bueno de módulo</h4><p>05/06/2026 · Docente de módulo</p></div><div class="item"><h4>Aprobación de modalidad</h4><p>09/06/2026 · Comisión CPOS</p></div><div class="item"><h4>Asignación de tutor</h4><p>12/06/2026 · Coordinación</p></div></div></div>
+  <div class="card"><h3>Actividad</h3><p><b>Tutorías:</b> {{ proyecto.tutorias.count }}</p><p><b>Archivos del proyecto:</b> {{ proyecto.archivos.count }}</p><p><b>Decisiones registradas:</b> {{ proyecto.aprobaciones.count }}</p><a class="btn" href="{% url 'titulacion:proyecto_detail' proyecto.pk %}">Abrir proyecto</a></div>
+  <div class="card"><h3>Evidencias</h3>{% if evidencias.integrado %}<p>{{ evidencias.validadas }} de {{ evidencias.total }} validadas.</p>{% else %}<span class="badge warn">Integración pendiente</span><p class="small">La evidencia pertenece a Seguimiento y no se duplicará aquí.</p>{% endif %}</div>
 </div>
+{% else %}<div class="card"><h3>Sin expediente visible</h3><p>No existe un proyecto de titulación asociado al alcance de este usuario.</p>{% if rol_actual == 'maestrante' %}<a class="btn" href="{% url 'titulacion:proyecto_create' %}">Crear proyecto</a>{% endif %}</div>{% endif %}
 {% endblock %}

@@ -1,0 +1,6 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head"><div><h2>{{ titulo }}</h2>{% if nota %}<p>{{ nota }}</p>{% endif %}</div></div>
+<div class="card"><form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.non_field_errors }}{% for field in form %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<p class="tiny">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endfor %}<div class="actions"><button class="btn" type="submit">Guardar</button><button class="btn secondary" type="button" onclick="history.back()">Cancelar</button></div></form></div>
+{% endblock %}

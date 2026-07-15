@@ -1,0 +1,38 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><span class="badge">{{ tutor.usuario.nombre_usuario }}</span><h2>{{ tutor.usuario.nombre_completo }}</h2><p>{{ tutor.titulo_academico|default:'Perfil académico de tutor' }}</p></div>
+  <div class="actions"><a class="btn secondary" href="{% url 'titulacion:tutores_list' %}">Volver</a>{% if puede_editar %}<a class="btn" href="{% url 'titulacion:tutor_update' tutor.pk %}">Editar</a>{% endif %}</div>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Información institucional</h3>
+    <dl class="detail-list">
+      <div><dt>Usuario</dt><dd>{{ tutor.usuario.nombre_usuario }}</dd></div>
+      <div><dt>Correo</dt><dd>{{ tutor.usuario.correo }}</dd></div>
+      <div><dt>Teléfono</dt><dd>{{ tutor.usuario.telefono|default:'No registrado' }}</dd></div>
+      <div><dt>Cuenta</dt><dd>{{ tutor.usuario.get_estado_display }}</dd></div>
+    </dl>
+  </div>
+  <div class="card">
+    <h3>Información académica</h3>
+    <dl class="detail-list">
+      <div><dt>Título académico</dt><dd>{{ tutor.titulo_academico|default:'No registrado' }}</dd></div>
+      <div><dt>Especialidad</dt><dd>{{ tutor.especialidad|default:'No registrada' }}</dd></div>
+      <div><dt>Línea de investigación</dt><dd>{{ tutor.linea_investigacion|default:'No registrada' }}</dd></div>
+      <div><dt>Disponibilidad</dt><dd>{{ tutor.get_estado_display }}</dd></div>
+    </dl>
+  </div>
+</div>
+
+{% if puede_editar %}
+<div class="card danger-zone">
+  <div class="card-heading">
+    <div><span class="badge {% if tutor.estado == 'inactivo' %}ok{% else %}warn{% endif %}">{% if tutor.estado == 'inactivo' %}Reactivación{% else %}Desactivación lógica{% endif %}</span><h3>{% if tutor.estado == 'inactivo' %}Reactivar tutor{% else %}Desactivar tutor{% endif %}</h3><p class="small">El historial se conserva y no se elimina ningún registro.</p></div>
+    <form method="post" action="{% url 'titulacion:tutor_toggle_estado' tutor.pk %}">{% csrf_token %}<button class="btn {% if tutor.estado != 'inactivo' %}danger{% endif %}" type="submit">{% if tutor.estado == 'inactivo' %}Reactivar como disponible{% else %}Desactivar tutor{% endif %}</button></form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
