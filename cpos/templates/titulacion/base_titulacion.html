@@ -1,0 +1,24 @@
+{% extends 'accounts/base_accounts.html' %}
+{% load static %}
+
+{% block title %}{{ page_title|default:'Titulación' }} | CPOS UTB{% endblock %}
+
+{% block extra_css %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'titulacion/css/titulacion.css' %}">
+{% endblock %}
+
+{% block accounts_content %}
+  <nav class="titulacion-nav" aria-label="Navegación del módulo de titulación">
+    <a class="{% if active_page == 'titulacion_dashboard' %}active{% endif %}" href="{% url 'titulacion:dashboard' %}">Resumen</a>
+    <a class="{% if active_page == 'expediente' %}active{% endif %}" href="{% url 'titulacion:expediente' %}">Expedientes</a>
+    <a class="{% if active_page == 'proyecto' %}active{% endif %}" href="{% url 'titulacion:proyecto' %}">Proyectos</a>
+    {% if user.rol.nombre == 'coordinador' or user.rol.nombre == 'supervisor' %}
+      <a class="{% if active_page == 'tutores' %}active{% endif %}" href="{% url 'titulacion:tutores_list' %}">Tutores</a>
+    {% endif %}
+    <a class="{% if active_page == 'articulo' %}active{% endif %}" href="{% url 'titulacion:articulo' %}">Artículos</a>
+    <a class="{% if active_page == 'aprobaciones' %}active{% endif %}" href="{% url 'titulacion:aprobaciones' %}">Aprobaciones</a>
+  </nav>
+  {% block titulacion_content %}{% endblock %}
+  {% block titulacion_modals %}{% endblock %}
+{% endblock %}

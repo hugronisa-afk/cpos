@@ -1,0 +1,16 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><h2>{% if modo == 'crear' %}Registrar tutor{% else %}Editar tutor{% endif %}</h2><p>El perfil académico complementa la cuenta institucional; no crea un usuario nuevo.</p></div>
+  <a class="btn secondary" href="{% if tutor %}{% url 'titulacion:tutor_detail' tutor.pk %}{% else %}{% url 'titulacion:tutores_list' %}{% endif %}">Volver</a>
+</div>
+{% if modo == 'crear' and not hay_usuarios_disponibles %}
+  <div class="alert warning">No hay cuentas activas con rol tutor disponibles. Primero registra el usuario institucional desde <a href="{% url 'accounts:usuario_create' %}"><b>Crear usuario</b></a>.</div>
+{% endif %}
+<form class="card form-card" method="post" novalidate>
+  {% csrf_token %}
+  {% include 'accounts/partials/form_fields.html' %}
+  <div class="form-actions"><button class="btn" type="submit">Guardar tutor</button><a class="btn secondary" href="{% url 'titulacion:tutores_list' %}">Cancelar</a></div>
+</form>
+{% endblock %}
