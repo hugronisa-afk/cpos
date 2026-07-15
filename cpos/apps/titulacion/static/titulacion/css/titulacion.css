@@ -1,0 +1,34 @@
+.titulacion-nav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px;
+  border: 1px solid var(--utb-line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.titulacion-nav a {
+  flex: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--utb-muted);
+  font-size: .86rem;
+  font-weight: 800;
+}
+
+.titulacion-nav a:hover,
+.titulacion-nav a.active {
+  background: var(--utb-green-soft);
+  color: var(--utb-green);
+}
+
+.filter-tutores {
+  grid-template-columns: minmax(260px, 2fr) minmax(180px, 1fr) auto;
+}
+
+@media (max-width: 680px) {
+  .filter-tutores {
+    grid-template-columns: 1fr;
+  }
+}
