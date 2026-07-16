@@ -1,115 +1,6 @@
 from django.contrib import admin
 
-from .models import (
-    Tutoria,
-    AsistenciaTutoria,
-    ReprogramacionTutoria,
-    Grabacion,
-    Evidencia,
-    EvidenciaVersion,
-    ValidacionEvidencia,
-    Articulo,
-    Notificacion,
-)
-
-
-@admin.register(Tutoria)
-class TutoriaAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "numero",
-        "proyecto",
-        "tutor",
-        "fecha",
-        "hora_inicio",
-        "hora_fin",
-        "estado",
-    )
-    list_filter = (
-        "estado",
-        "fecha",
-    )
-    search_fields = (
-        "tema",
-        "descripcion",
-        "proyecto__titulo",
-        "tutor__usuario__nombres",
-        "tutor__usuario__apellidos",
-        "tutor__usuario__email",
-    )
-    ordering = (
-        "fecha",
-        "hora_inicio",
-        "numero",
-    )
-
-
-@admin.register(AsistenciaTutoria)
-class AsistenciaTutoriaAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "tutoria",
-        "usuario",
-        "tipo_participante",
-        "asistio",
-        "fecha_registro",
-    )
-    list_filter = (
-        "tipo_participante",
-        "asistio",
-        "fecha_registro",
-    )
-    search_fields = (
-        "usuario__nombres",
-        "usuario__apellidos",
-        "usuario__email",
-        "tutoria__tema",
-    )
-
-
-@admin.register(ReprogramacionTutoria)
-class ReprogramacionTutoriaAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "tutoria",
-        "fecha_anterior",
-        "fecha_nueva",
-        "estado",
-        "solicitado_por",
-        "aprobado_por",
-    )
-    list_filter = (
-        "estado",
-        "fecha_anterior",
-        "fecha_nueva",
-    )
-    search_fields = (
-        "motivo",
-        "tutoria__tema",
-        "solicitado_por__email",
-        "aprobado_por__email",
-    )
-
-
-@admin.register(Grabacion)
-class GrabacionAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "proyecto",
-        "tutoria",
-        "enlace",
-        "registrado_por",
-        "fecha_registro",
-    )
-    list_filter = (
-        "fecha_registro",
-    )
-    search_fields = (
-        "proyecto__titulo",
-        "tutoria__tema",
-        "enlace",
-        "registrado_por__email",
-    )
+from .models import Evidencia, EvidenciaVersion, Notificacion, ValidacionEvidencia
 
 
 @admin.register(Evidencia)
@@ -121,25 +12,18 @@ class EvidenciaAdmin(admin.ModelAdmin):
         "estado",
         "proyecto",
         "tutoria",
-        "cargado_por",
-        "fecha_carga",
+        "subido_por",
+        "version_actual",
+        "fecha_creacion",
     )
-    list_filter = (
-        "tipo_avance",
-        "estado",
-        "fecha_carga",
-    )
+    list_filter = ("tipo_avance", "estado", "fecha_creacion")
     search_fields = (
         "titulo",
         "descripcion",
-        "proyecto__titulo",
-        "tutoria__tema",
-        "cargado_por__email",
+        "proyecto__tema",
+        "subido_por__correo",
     )
-    ordering = (
-        "-fecha_carga",
-        "-id",
-    )
+    ordering = ("-fecha_creacion", "-id")
 
 
 @admin.register(EvidenciaVersion)
@@ -148,22 +32,16 @@ class EvidenciaVersionAdmin(admin.ModelAdmin):
         "id",
         "evidencia",
         "numero_version",
-        "creado_por",
-        "creado_en",
+        "subido_por",
+        "fecha_creacion",
     )
-    list_filter = (
-        "numero_version",
-        "creado_en",
-    )
+    list_filter = ("numero_version", "fecha_creacion")
     search_fields = (
         "evidencia__titulo",
-        "descripcion_cambios",
-        "creado_por__email",
+        "comentario",
+        "subido_por__correo",
     )
-    ordering = (
-        "-creado_en",
-        "-numero_version",
-    )
+    ordering = ("-fecha_creacion", "-numero_version")
 
 
 @admin.register(ValidacionEvidencia)
@@ -171,47 +49,17 @@ class ValidacionEvidenciaAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "evidencia",
-        "tutor",
-        "estado",
+        "estado_resultado",
         "validado_por",
-        "fecha_validacion",
+        "fecha_creacion",
     )
-    list_filter = (
-        "estado",
-        "fecha_validacion",
-    )
+    list_filter = ("estado_resultado", "fecha_creacion")
     search_fields = (
         "evidencia__titulo",
         "observaciones",
-        "validado_por__email",
-        "tutor__usuario__email",
+        "validado_por__correo",
     )
-    ordering = (
-        "-fecha_validacion",
-        "-id",
-    )
-
-
-@admin.register(Articulo)
-class ArticuloAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "proyecto",
-        "estado",
-        "revista_nombre",
-        "fecha_envio_revista",
-        "estado_respuesta_revista",
-    )
-    list_filter = (
-        "estado",
-        "fecha_envio_revista",
-        "estado_respuesta_revista",
-    )
-    search_fields = (
-        "titulo",
-        "proyecto__titulo",
-        "revista_nombre",
-    )
+    ordering = ("-fecha_creacion", "-id")
 
 
 @admin.register(Notificacion)
@@ -221,22 +69,16 @@ class NotificacionAdmin(admin.ModelAdmin):
         "usuario",
         "titulo",
         "tipo",
-        "leida",
-        "creado_en",
+        "estado",
+        "fecha_envio",
+        "fecha_lectura",
     )
-    list_filter = (
-        "tipo",
-        "leida",
-        "creado_en",
-    )
+    list_filter = ("tipo", "estado", "fecha_creacion")
     search_fields = (
         "titulo",
         "mensaje",
-        "usuario__email",
+        "usuario__correo",
         "usuario__nombres",
         "usuario__apellidos",
     )
-    ordering = (
-        "-creado_en",
-        "-id",
-    )
+    ordering = ("-fecha_creacion", "-id")

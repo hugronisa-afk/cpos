@@ -3,14 +3,14 @@
 {% block accounts_content %}
 <div class="page-head">
   <div><h2>Roles</h2><p>Niveles de autoridad y permisos efectivos del sistema.</p></div>
-  {% if user.rol.nombre == 'supervisor' %}<a class="btn" href="{% url 'accounts:rol_create' %}">Crear rol</a>{% endif %}
+  {% if user.rol.nombre == 'administrador_desarrollador' %}<a class="btn" href="{% url 'accounts:rol_create' %}">Crear rol</a>{% endif %}
 </div>
 <div class="grid cols-2">
   {% for rol in roles %}
     <article class="card">
       <div class="card-heading"><div><span class="badge">{{ rol.nivel_autoridad|capfirst }}</span><h3>{{ rol.nombre|capfirst }}</h3></div>{% if rol.esta_activo %}<span class="badge ok">Activo</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</div>
       <p class="small">{{ rol.descripcion|default:'Sin descripción registrada.' }}</p>
-      <div class="actions"><a class="btn secondary smallbtn" href="{% url 'accounts:rol_detail' rol.pk %}">Ver permisos</a>{% if user.rol.nombre == 'supervisor' %}<a class="btn secondary smallbtn" href="{% url 'accounts:rol_update' rol.pk %}">Editar</a>{% endif %}</div>
+      <div class="actions"><a class="btn secondary smallbtn" href="{% url 'accounts:rol_detail' rol.pk %}">Ver permisos</a>{% if user.rol.nombre == 'administrador_desarrollador' %}<a class="btn secondary smallbtn" href="{% url 'accounts:rol_update' rol.pk %}">Editar</a>{% endif %}</div>
     </article>
   {% empty %}
     <div class="card empty-state">No hay roles registrados.</div>

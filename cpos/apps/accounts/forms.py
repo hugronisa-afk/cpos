@@ -25,11 +25,15 @@ from .models import (
     UsuarioCPOS,
 )
 from .services import (
+    ROL_ADMIN_DESARROLLADOR,
+    PERMISOS_ADMIN_DESARROLLADOR,
     SIGLAS_ROL,
     actualizar_usuario_seguro,
     cambiar_password_usuario,
     crear_usuario_seguro,
     generar_nombre_usuario,
+    es_administrador_desarrollador,
+    validar_asignacion_rol_tecnico,
     validar_nombre_usuario_disponible,
 )
 
@@ -84,6 +88,10 @@ def _actor_es_supervisor(actor) -> bool:
         and actor.rol.esta_activo
         and actor.rol.nombre.strip().lower() == "supervisor"
     )
+
+
+def _actor_gestiona_todos_los_usuarios(actor) -> bool:
+    return _actor_es_supervisor(actor) or es_administrador_desarrollador(actor)
 
 
 class LoginForm(EstilosFormularioMixin, forms.Form):
@@ -142,7 +150,7 @@ class UsuarioDatosMixin:
         if not rol.esta_activo:
             raise ValidationError("No se puede asignar un rol inactivo.")
         actor = getattr(self, "actor", None)
-        if isinstance(actor, UsuarioCPOS) and not _actor_es_supervisor(actor):
+        if isinstance(actor, UsuarioCPOS) and not _actor_gestiona_todos_los_usuarios(actor):
             instancia = getattr(self, "instance", None)
             editando_cuenta_propia = bool(
                 instancia
@@ -154,7 +162,7 @@ class UsuarioDatosMixin:
                     raise ValidationError("No puede modificar su propio rol.")
             elif rol.nombre.strip().lower() != "maestrante":
                 raise ValidationError(
-                    "Solo un supervisor puede asignar este rol."
+                    "No tiene autorización para asignar este rol."
                 )
         return rol
 
@@ -231,13 +239,22 @@ class UsuarioCreateForm(
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         roles = Rol.objects.filter(esta_activo=True)
-        if isinstance(self.actor, UsuarioCPOS) and not _actor_es_supervisor(self.actor):
+        if isinstance(self.actor, UsuarioCPOS) and not _actor_gestiona_todos_los_usuarios(self.actor):
             roles = roles.filter(nombre__iexact="maestrante")
         self.fields["rol"].queryset = roles.order_by("nombre")
 
     def clean(self):
         cleaned_data = super().clean()
         self._validar_identificadores(cleaned_data)
+        if cleaned_data.get("rol") and cleaned_data.get("estado"):
+            try:
+                validar_asignacion_rol_tecnico(
+                    actor=self.actor,
+                    rol=cleaned_data["rol"],
+                    estado=cleaned_data["estado"],
+                )
+            except ValidationError as error:
+                self.add_error("rol", error)
 
         password1 = cleaned_data.get("password1")
         password2 = cleaned_data.get("password2")
@@ -304,7 +321,7 @@ class UsuarioUpdateForm(
         roles = Rol.objects.filter(esta_activo=True)
         if self.instance and self.instance.rol_id:
             roles = Rol.objects.filter(Q(esta_activo=True) | Q(pk=self.instance.rol_id))
-        if isinstance(self.actor, UsuarioCPOS) and not _actor_es_supervisor(self.actor):
+        if isinstance(self.actor, UsuarioCPOS) and not _actor_gestiona_todos_los_usuarios(self.actor):
             if self.instance and self.instance.pk == self.actor.pk:
                 roles = roles.filter(pk=self.actor.rol_id)
             else:
@@ -323,6 +340,16 @@ class UsuarioUpdateForm(
             and cleaned_data.get("estado") != EstadoUsuario.ACTIVO
         ):
             self.add_error("estado", "No puede desactivar su propia cuenta.")
+        if cleaned_data.get("rol") and cleaned_data.get("estado"):
+            try:
+                validar_asignacion_rol_tecnico(
+                    actor=self.actor,
+                    rol=cleaned_data["rol"],
+                    estado=cleaned_data["estado"],
+                    usuario_actual=self.instance,
+                )
+            except ValidationError as error:
+                self.add_error("rol", error)
         return cleaned_data
 
     def save(self, commit=True):
@@ -425,6 +452,22 @@ class UsuarioPasswordForm(ContextoAuditoriaMixin, EstilosFormularioMixin, forms.
         )
 
 
+class ImportacionUsuariosForm(EstilosFormularioMixin, forms.Form):
+    archivo = forms.FileField(
+        label="Archivo de usuarios",
+        help_text="Formato CSV o XLSX. Máximo 2 MB y 1.000 filas.",
+    )
+
+    def clean_archivo(self):
+        archivo = self.cleaned_data["archivo"]
+        nombre = str(archivo.name or "").lower()
+        if not nombre.endswith((".csv", ".xlsx")):
+            raise ValidationError("El archivo debe ser CSV o XLSX.")
+        if archivo.size > 2 * 1024 * 1024:
+            raise ValidationError("El archivo no puede superar 2 MB.")
+        return archivo
+
+
 class RolForm(EstilosFormularioMixin, forms.ModelForm):
     class Meta:
         model = Rol
@@ -439,9 +482,15 @@ class RolForm(EstilosFormularioMixin, forms.ModelForm):
 
     def clean_nombre(self):
         nombre = self.cleaned_data["nombre"].strip().lower()
+        if (
+            self.instance.pk
+            and self.instance.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR
+            and nombre != ROL_ADMIN_DESARROLLADOR
+        ):
+            raise ValidationError("El rol técnico protegido no puede renombrarse.")
         if nombre not in SIGLAS_ROL:
             raise ValidationError(
-                "El rol debe ser maestrante, tutor, coordinador o supervisor."
+                "El nombre no corresponde a un rol institucional permitido."
             )
         consulta = Rol.objects.filter(nombre__iexact=nombre)
         if self.instance.pk:
@@ -449,6 +498,24 @@ class RolForm(EstilosFormularioMixin, forms.ModelForm):
         if consulta.exists():
             raise ValidationError("Ya existe un rol con este nombre.")
         return nombre
+
+    def clean(self):
+        datos = super().clean()
+        if (
+            self.instance.pk
+            and self.instance.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR
+        ):
+            if datos.get("nivel_autoridad") != "supervision":
+                self.add_error(
+                    "nivel_autoridad",
+                    "El rol técnico debe conservar el nivel de supervisión técnica.",
+                )
+            if not datos.get("esta_activo"):
+                self.add_error(
+                    "esta_activo",
+                    "El rol técnico protegido no puede desactivarse desde esta pantalla.",
+                )
+        return datos
 
     def save(self, commit=True):
         instancia = _aplicar_fecha_actualizacion(super().save(commit=False))
@@ -537,6 +604,22 @@ class RolPermisoForm(EstilosFormularioMixin, forms.Form):
                 ]
             )
         return rol
+
+    def clean_permisos(self):
+        permisos = self.cleaned_data["permisos"]
+        rol = self.rol_objeto or self.cleaned_data.get("rol")
+        if rol and rol.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR:
+            no_permitidos = sorted(
+                set(permisos.values_list("codigo", flat=True))
+                - PERMISOS_ADMIN_DESARROLLADOR
+            )
+            if no_permitidos:
+                raise ValidationError(
+                    "El rol técnico no puede recibir permisos académicos: "
+                    + ", ".join(no_permitidos)
+                    + "."
+                )
+        return permisos
 
 
 class ProgramaForm(EstilosFormularioMixin, forms.ModelForm):

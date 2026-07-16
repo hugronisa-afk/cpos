@@ -25,6 +25,7 @@ from .models import (
 
 
 SIGLAS_ROL = {
+    "administrador_desarrollador": "ADM",
     "maestrante": "MST",
     "tutor": "TTR",
     "coordinador": "COR",
@@ -32,6 +33,7 @@ SIGLAS_ROL = {
 }
 
 RUTAS_DASHBOARD_ROL = {
+    "administrador_desarrollador": "accounts:dashboard",
     "maestrante": "accounts:dashboard",
     "tutor": "accounts:dashboard",
     "coordinador": "accounts:dashboard",
@@ -39,12 +41,47 @@ RUTAS_DASHBOARD_ROL = {
 }
 
 BACKEND_USUARIO_CPOS = "apps.accounts.backends.UsuarioCPOSBackend"
+ROL_ADMIN_DESARROLLADOR = "administrador_desarrollador"
+MAX_ADMINISTRADORES_DESARROLLADORES = 3
+PERMISOS_ADMIN_DESARROLLADOR = frozenset(
+    {
+        "USUARIO_VER",
+        "USUARIO_CREAR",
+        "USUARIO_EDITAR",
+        "USUARIO_DESACTIVAR",
+        "ROL_VER",
+        "PERMISO_VER",
+        "PROGRAMA_VER",
+        "PROGRAMA_CREAR",
+        "PROGRAMA_EDITAR",
+        "COHORTE_VER",
+        "COHORTE_CREAR",
+        "COHORTE_EDITAR",
+        "MAESTRANTE_VER",
+        "MAESTRANTE_CREAR",
+        "MAESTRANTE_EDITAR",
+        "TUTOR_VER",
+        "TUTOR_CREAR",
+        "TUTOR_EDITAR",
+        "BITACORA_VER",
+        "IMPORTACION_USUARIOS",
+        "MANTENIMIENTO_VER",
+        "MANTENIMIENTO_EJECUTAR",
+    }
+)
 
 _NO_PROPORCIONADO = object()
 _PATRON_DATO_SENSIBLE = re.compile(
     r"(?i)\b(password|contrase(?:ña|na)|contrasena_hash|token|secret|secreto)"
     r"\b\s*[:=]\s*([^\s,;]+)"
 )
+
+_DESCRIPCIONES_ESTADO_USUARIO = {
+    "activar_usuario": "Se activó una cuenta de usuario.",
+    "desactivar_usuario": "Se desactivó una cuenta de usuario.",
+    "bloquear_usuario": "Se bloqueó una cuenta de usuario.",
+    "desbloquear_usuario": "Se desbloqueó una cuenta de usuario.",
+}
 
 
 def _texto_obligatorio(valor: Any, etiqueta: str, longitud_maxima: int) -> str:
@@ -135,6 +172,18 @@ def _usuario_actor(actor: Any = None, request: Any = None) -> UsuarioCPOS | None
     return None
 
 
+def _evento_cambio_estado_usuario(estado_anterior: str, estado_nuevo: str) -> tuple[str, str]:
+    if estado_nuevo == EstadoUsuario.BLOQUEADO:
+        accion = "bloquear_usuario"
+    elif estado_anterior == EstadoUsuario.BLOQUEADO and estado_nuevo == EstadoUsuario.ACTIVO:
+        accion = "desbloquear_usuario"
+    elif estado_nuevo == EstadoUsuario.ACTIVO:
+        accion = "activar_usuario"
+    else:
+        accion = "desactivar_usuario"
+    return accion, _DESCRIPCIONES_ESTADO_USUARIO[accion]
+
+
 def obtener_sigla_rol(rol: Rol | str) -> str:
     """Devuelve la sigla institucional correspondiente a un rol."""
     nombre_rol = rol.nombre if isinstance(rol, Rol) else str(rol)
@@ -143,6 +192,69 @@ def obtener_sigla_rol(rol: Rol | str) -> str:
         return SIGLAS_ROL[nombre_normalizado]
     except KeyError as exc:
         raise ValidationError({"rol": "El rol no tiene una sigla configurada."}) from exc
+
+
+def es_administrador_desarrollador(usuario: Any) -> bool:
+    """Identifica una cuenta técnica activa sin conceder autoridad académica."""
+    return bool(
+        isinstance(usuario, UsuarioCPOS)
+        and usuario.is_active
+        and usuario.rol.esta_activo
+        and usuario.rol.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR
+    )
+
+
+def validar_asignacion_rol_tecnico(
+    *,
+    actor: UsuarioCPOS | None,
+    rol: Rol,
+    estado: str,
+    usuario_actual: UsuarioCPOS | None = None,
+) -> None:
+    """Protege el alta del rol técnico y limita a tres cuentas activas."""
+    rol_nuevo_es_tecnico = rol.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR
+    rol_actual_es_tecnico = bool(
+        usuario_actual
+        and usuario_actual.rol.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR
+    )
+    actor_es_tecnico = es_administrador_desarrollador(actor)
+    actor_es_supervisor = bool(
+        isinstance(actor, UsuarioCPOS)
+        and actor.is_active
+        and actor.rol.esta_activo
+        and actor.rol.nombre.strip().lower() == "supervisor"
+    )
+
+    if rol_actual_es_tecnico and not actor_es_tecnico:
+        raise ValidationError(
+            {"rol": "Solo otra cuenta técnica puede modificar este rol protegido."}
+        )
+
+    if not rol_nuevo_es_tecnico:
+        return
+
+    tecnicos = UsuarioCPOS.objects.filter(
+        rol__nombre__iexact=ROL_ADMIN_DESARROLLADOR,
+        estado=EstadoUsuario.ACTIVO,
+    )
+    if usuario_actual:
+        tecnicos = tecnicos.exclude(pk=usuario_actual.pk)
+
+    # El supervisor puede crear únicamente la primera cuenta para arrancar el
+    # esquema. Desde ese momento, las cuentas técnicas administran las demás.
+    if not actor_es_tecnico and not (actor_es_supervisor and not tecnicos.exists()):
+        raise ValidationError(
+            {"rol": "El rol administrador/desarrollador es de asignación protegida."}
+        )
+    if estado == EstadoUsuario.ACTIVO and tecnicos.count() >= MAX_ADMINISTRADORES_DESARROLLADORES:
+        raise ValidationError(
+            {
+                "rol": (
+                    "Ya existen tres cuentas técnicas activas. Inactive una antes "
+                    "de habilitar otra."
+                )
+            }
+        )
 
 
 def generar_nombre_usuario(cedula: Any, rol: Rol | str) -> str:
@@ -192,7 +304,7 @@ def crear_usuario_seguro(
     apellidos: str,
     cedula: str,
     correo: str,
-    contrasena: str,
+    contrasena: str | None,
     telefono: str | None = None,
     estado: str = EstadoUsuario.ACTIVO,
     actor: UsuarioCPOS | None = None,
@@ -204,6 +316,11 @@ def crear_usuario_seguro(
     cedula_normalizada = _normalizar_cedula(cedula)
     correo_normalizado = _normalizar_correo(correo)
     estado_validado = _validar_estado_usuario(estado)
+    validar_asignacion_rol_tecnico(
+        actor=_usuario_actor(actor, request),
+        rol=rol_objeto,
+        estado=estado_validado,
+    )
     nombre_generado = generar_nombre_usuario(cedula_normalizada, rol_objeto)
 
     usuario = UsuarioCPOS(
@@ -216,11 +333,24 @@ def crear_usuario_seguro(
         estado=estado_validado,
         nombre_usuario=nombre_generado,
     )
-    _validar_password(contrasena, usuario)
-    usuario.set_password(contrasena)
+    if contrasena:
+        _validar_password(contrasena, usuario)
+        usuario.set_password(contrasena)
+    else:
+        # Las cuentas importadas quedan inutilizables hasta que una persona
+        # autorizada establezca su primera contraseña desde el sistema.
+        usuario.set_unusable_password()
 
     try:
         with transaction.atomic():
+            if rol_objeto.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR:
+                rol_objeto = Rol.objects.select_for_update().get(pk=rol_objeto.pk)
+                validar_asignacion_rol_tecnico(
+                    actor=_usuario_actor(actor, request),
+                    rol=rol_objeto,
+                    estado=estado_validado,
+                )
+                usuario.rol = rol_objeto
             _validar_identificadores_disponibles(
                 cedula=cedula_normalizada,
                 rol=rol_objeto,
@@ -269,10 +399,13 @@ def actualizar_usuario_seguro(
                 .select_related("rol")
                 .get(pk=usuario_id)
             )
+            estado_anterior = usuario_actual.estado
 
             rol_nuevo = (
                 usuario_actual.rol if rol is _NO_PROPORCIONADO else _resolver_rol(rol)
             )
+            if rol_nuevo.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR:
+                rol_nuevo = Rol.objects.select_for_update().get(pk=rol_nuevo.pk)
             _validar_rol_activo(rol_nuevo)
             cedula_nueva = (
                 usuario_actual.cedula
@@ -283,6 +416,17 @@ def actualizar_usuario_seguro(
                 usuario_actual.correo
                 if correo is _NO_PROPORCIONADO
                 else _normalizar_correo(correo)
+            )
+            estado_nuevo = (
+                usuario_actual.estado
+                if estado is _NO_PROPORCIONADO
+                else _validar_estado_usuario(str(estado))
+            )
+            validar_asignacion_rol_tecnico(
+                actor=_usuario_actor(actor, request),
+                rol=rol_nuevo,
+                estado=estado_nuevo,
+                usuario_actual=usuario_actual,
             )
             nombre_generado = generar_nombre_usuario(cedula_nueva, rol_nuevo)
 
@@ -307,7 +451,7 @@ def actualizar_usuario_seguro(
             if telefono is not _NO_PROPORCIONADO:
                 valores["telefono"] = _normalizar_telefono(telefono)
             if estado is not _NO_PROPORCIONADO:
-                valores["estado"] = _validar_estado_usuario(str(estado))
+                valores["estado"] = estado_nuevo
 
             for campo, valor in valores.items():
                 if getattr(usuario_actual, campo) != valor:
@@ -319,19 +463,40 @@ def actualizar_usuario_seguro(
                 usuario_actual.save(
                     update_fields=campos_actualizados + ["fecha_actualizacion"]
                 )
-                registrar_bitacora(
-                    usuario=_usuario_actor(actor, request),
-                    modulo="seguridad",
-                    accion="actualizar_usuario",
-                    tabla_afectada="usuarios",
-                    registro_id=usuario_actual.pk,
-                    descripcion=(
-                        "Se actualizaron campos de la cuenta: "
-                        + ", ".join(sorted(campos_actualizados))
-                        + "."
-                    ),
-                    request=request,
+                actor_bitacora = _usuario_actor(actor, request)
+                campos_datos = sorted(
+                    campo for campo in campos_actualizados if campo != "estado"
                 )
+                if campos_datos:
+                    registrar_bitacora(
+                        usuario=actor_bitacora,
+                        modulo="seguridad",
+                        accion="editar_usuario",
+                        tabla_afectada="usuarios",
+                        registro_id=usuario_actual.pk,
+                        descripcion=(
+                            "Se actualizaron campos de la cuenta: "
+                            + ", ".join(campos_datos)
+                            + "."
+                        ),
+                        request=request,
+                    )
+                if "estado" in campos_actualizados:
+                    accion_estado, descripcion_estado = _evento_cambio_estado_usuario(
+                        estado_anterior,
+                        usuario_actual.estado,
+                    )
+                    registrar_bitacora(
+                        usuario=actor_bitacora,
+                        modulo="seguridad",
+                        accion=accion_estado,
+                        tabla_afectada="usuarios",
+                        registro_id=usuario_actual.pk,
+                        descripcion=descripcion_estado,
+                        request=request,
+                    )
+                    if usuario_actual.estado != EstadoUsuario.ACTIVO:
+                        invalidar_sesiones_usuario(usuario_actual)
     except UsuarioCPOS.DoesNotExist as exc:
         raise ValidationError({"usuario": "El usuario indicado no existe."}) from exc
     except IntegrityError as exc:
@@ -465,7 +630,7 @@ def registrar_bitacora(
     tabla_limpia = str(tabla_afectada).strip()[:120] if tabla_afectada else None
     agente = None
     if request is not None:
-        agente = str(request.META.get("HTTP_USER_AGENT", "")).strip() or None
+        agente = str(request.META.get("HTTP_USER_AGENT", "")).strip()[:500] or None
 
     return Bitacora.objects.create(
         usuario=usuario if isinstance(usuario, UsuarioCPOS) else None,

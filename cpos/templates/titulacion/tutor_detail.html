@@ -27,6 +27,25 @@
   </div>
 </div>
 
+<div class="grid cols-2" style="margin-top:18px">
+  <div class="card">
+    <h3>Programas habilitados</h3>
+    {% for vinculo in tutor.vinculos_programa.all %}{% if vinculo.esta_activo %}<p><b>{{ vinculo.programa.nombre }}</b><span class="badge">Cupo {{ vinculo.cupo_maximo }}</span></p>{% endif %}{% empty %}<p>No hay programas vinculados.</p>{% endfor %}
+    <p><b>Carga actual:</b> {{ tutor.carga_activa }} asignaciones activas.</p>
+  </div>
+  <div class="card">
+    <div class="page-head"><div><h3>Disponibilidad semanal</h3><p>Estos bloques controlan la programación y reprogramación.</p></div>{% if puede_disponibilidad %}<a class="btn secondary smallbtn" href="{% url 'titulacion:tutor_disponibilidad_create' tutor.pk %}">Agregar bloque</a>{% endif %}</div>
+    {% for bloque in tutor.disponibilidades.all %}
+      <div class="card-heading"><div><b>{{ bloque.get_dia_semana_display }}</b><div class="tiny">{{ bloque.hora_inicio|time:'H:i' }}–{{ bloque.hora_fin|time:'H:i' }} · {% if bloque.esta_activa %}Activa{% else %}Inactiva{% endif %}</div></div>{% if puede_disponibilidad %}<form method="post" action="{% url 'titulacion:tutor_disponibilidad_toggle' bloque.pk %}">{% csrf_token %}<button class="btn secondary smallbtn" type="submit">{% if bloque.esta_activa %}Desactivar{% else %}Activar{% endif %}</button></form>{% endif %}</div>
+    {% empty %}<p>No hay disponibilidad registrada.</p>{% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Asignaciones activas</h3>
+  {% for asignacion in asignaciones_activas %}<p><b>{{ asignacion.proyecto.maestrante.usuario.nombre_completo }}</b> · {{ asignacion.proyecto.tema|truncatechars:90 }}</p>{% empty %}<p>El tutor no tiene proyectos activos.</p>{% endfor %}
+</div>
+
 {% if puede_editar %}
 <div class="card danger-zone">
   <div class="card-heading">

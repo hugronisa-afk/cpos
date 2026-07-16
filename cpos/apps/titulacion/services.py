@@ -13,20 +13,29 @@ from django.utils import timezone
 from apps.accounts.models import EstadoTitulacion
 from apps.accounts.services import registrar_bitacora, usuario_tiene_permiso
 
+from .modalidades import modalidad_disponible
 from .models import (
     Aprobacion,
     ArchivoProyecto,
     AsignacionTutor,
+    DisponibilidadTutor,
     EstadoAprobacion,
     EstadoAsignacion,
     EstadoCambioTema,
+    EstadoCambioModalidad,
     EstadoProyecto,
     EstadoReprogramacion,
+    EstadoSolicitudCambioTutor,
     EstadoTutoria,
+    ModalidadProyecto,
     ProyectoTitulacion,
     ReprogramacionTutoria,
+    SolicitudCambioTutor,
     SolicitudCambioTema,
+    SolicitudCambioModalidad,
     Tutoria,
+    Tutor,
+    TutorPrograma,
 )
 
 
@@ -84,7 +93,7 @@ def puede_crear_proyecto(usuario) -> bool:
         and not ProyectoTitulacion.objects.filter(
             maestrante__usuario_id=usuario.pk,
             esta_activo=True,
-        ).exists()
+        ).exclude(estado=EstadoProyecto.RECHAZADO).exists()
     )
 
 
@@ -107,9 +116,9 @@ def puede_revisar_proyecto(usuario, proyecto) -> bool:
 
 def puede_aprobar_proyecto(usuario, proyecto) -> bool:
     return (
-        rol_usuario(usuario) == "coordinador"
+        rol_usuario(usuario) == "supervisor"
         and proyectos_visibles(usuario).filter(pk=proyecto.pk).exists()
-        and usuario_tiene_permiso(usuario, "PROYECTO_APROBAR")
+        and usuario_tiene_permiso(usuario, "APROBACION_SUPERVISION")
     )
 
 
@@ -135,6 +144,7 @@ def puede_editar_articulo(usuario, proyecto) -> bool:
     return (
         rol_usuario(usuario) == "maestrante"
         and proyecto.maestrante.usuario_id == usuario.pk
+        and proyecto.modalidad == ModalidadProyecto.ARTICULO
         and usuario_tiene_permiso(usuario, "ARTICULO_EDITAR")
     )
 
@@ -142,6 +152,7 @@ def puede_editar_articulo(usuario, proyecto) -> bool:
 def puede_revisar_articulo(usuario, proyecto) -> bool:
     return (
         rol_usuario(usuario) in {"tutor", "coordinador"}
+        and proyecto.modalidad == ModalidadProyecto.ARTICULO
         and proyectos_visibles(usuario).filter(pk=proyecto.pk).exists()
         and usuario_tiene_permiso(usuario, "ARTICULO_REVISAR")
     )
@@ -162,6 +173,7 @@ def puede_revisar_archivo(usuario, archivo: ArchivoProyecto) -> bool:
 def puede_solicitar_cambio_tema(usuario, proyecto) -> bool:
     return (
         rol_usuario(usuario) in {"maestrante", "tutor"}
+        and proyecto.estado == EstadoProyecto.APROBADO
         and proyectos_visibles(usuario).filter(pk=proyecto.pk).exists()
         and usuario_tiene_permiso(usuario, "CAMBIO_TEMA_SOLICITAR")
         and not proyecto.solicitudes_cambio_tema.filter(
@@ -175,6 +187,26 @@ def puede_revisar_cambio_tema(usuario, proyecto) -> bool:
         rol_usuario(usuario) == "coordinador"
         and proyectos_visibles(usuario).filter(pk=proyecto.pk).exists()
         and usuario_tiene_permiso(usuario, "CAMBIO_TEMA_REVISAR")
+    )
+
+
+def puede_solicitar_cambio_modalidad(usuario, proyecto) -> bool:
+    return (
+        rol_usuario(usuario) in {"maestrante", "tutor"}
+        and proyecto.estado == EstadoProyecto.APROBADO
+        and proyectos_visibles(usuario).filter(pk=proyecto.pk).exists()
+        and usuario_tiene_permiso(usuario, "CAMBIO_MODALIDAD_SOLICITAR")
+        and not proyecto.solicitudes_cambio_modalidad.filter(
+            estado=EstadoCambioModalidad.PENDIENTE
+        ).exists()
+    )
+
+
+def puede_revisar_cambio_modalidad(usuario, proyecto) -> bool:
+    return (
+        rol_usuario(usuario) == "coordinador"
+        and proyectos_visibles(usuario).filter(pk=proyecto.pk).exists()
+        and usuario_tiene_permiso(usuario, "CAMBIO_MODALIDAD_REVISAR")
     )
 
 
@@ -284,26 +316,52 @@ def resolver_revision_proyecto(proyecto, actor, estado, observaciones, request=N
     return proyecto
 
 
+def _validar_tutor_elegible(proyecto, tutor):
+    if (
+        tutor.estado != "disponible"
+        or not tutor.usuario.is_active
+        or rol_usuario(tutor.usuario) != "tutor"
+    ):
+        raise ValidationError("El tutor seleccionado no está disponible.")
+    vinculo = TutorPrograma.objects.filter(
+        tutor=tutor,
+        programa_id=proyecto.maestrante.programa_id,
+        esta_activo=True,
+    ).first()
+    if vinculo is None:
+        raise ValidationError("El tutor no está habilitado para este programa.")
+    if not DisponibilidadTutor.objects.filter(tutor=tutor, esta_activa=True).exists():
+        raise ValidationError("El tutor no tiene disponibilidad horaria registrada.")
+    carga = AsignacionTutor.objects.filter(
+        tutor=tutor,
+        estado=EstadoAsignacion.ACTIVO,
+    ).count()
+    if carga >= vinculo.cupo_maximo:
+        raise ValidationError("El tutor alcanzó su cupo máximo de proyectos activos.")
+    return vinculo
+
+
 @transaction.atomic
 def asignar_tutor(proyecto, tutor, actor, motivo=None, request=None):
+    ProyectoTitulacion.objects.select_for_update().filter(pk=proyecto.pk).exists()
+    Tutor.objects.select_for_update().filter(pk=tutor.pk).exists()
     if rol_usuario(actor) != "coordinador" or not usuario_tiene_permiso(actor, "ASIGNACION_TUTOR_CREAR"):
         raise PermissionDenied("No puede asignar tutores.")
     if not proyectos_visibles(actor).filter(pk=proyecto.pk).exists():
         raise PermissionDenied("El proyecto no pertenece a su programa.")
     if proyecto.estado != EstadoProyecto.APROBADO:
         raise ValidationError("El proyecto debe estar aprobado antes de asignar tutor.")
+    _validar_tutor_elegible(proyecto, tutor)
     anterior = proyecto.asignaciones_tutor.select_for_update().filter(estado=EstadoAsignacion.ACTIVO).first()
     if anterior:
-        if anterior.tutor_id == tutor.pk:
-            raise ValidationError("Este tutor ya está asignado al proyecto.")
-        anterior.estado = EstadoAsignacion.REEMPLAZADO
-        anterior.motivo_cambio = str(motivo or "").strip() or "Cambio de tutor"
-        anterior.save()
+        raise ValidationError(
+            "El proyecto ya tiene tutor. Use la solicitud formal de cambio."
+        )
     asignacion = AsignacionTutor.objects.create(
         proyecto=proyecto,
         tutor=tutor,
         asignado_por=actor,
-        motivo_cambio=str(motivo or "").strip() or None,
+        motivo_cambio=None,
     )
     proyecto.maestrante.estado_titulacion = EstadoTitulacion.TUTOR_ASIGNADO
     proyecto.maestrante.save(update_fields=("estado_titulacion", "fecha_actualizacion"))
@@ -312,14 +370,319 @@ def asignar_tutor(proyecto, tutor, actor, motivo=None, request=None):
     return asignacion
 
 
+def puede_solicitar_cambio_tutor(usuario, proyecto) -> bool:
+    return (
+        rol_usuario(usuario) in {"maestrante", "tutor"}
+        and proyecto.estado == EstadoProyecto.APROBADO
+        and proyectos_visibles(usuario).filter(pk=proyecto.pk).exists()
+        and usuario_tiene_permiso(usuario, "CAMBIO_TUTOR_SOLICITAR")
+        and proyecto.asignaciones_tutor.filter(
+            estado=EstadoAsignacion.ACTIVO
+        ).exists()
+        and not proyecto.solicitudes_cambio_tutor.filter(
+            estado=EstadoSolicitudCambioTutor.PENDIENTE
+        ).exists()
+    )
+
+
 @transaction.atomic
-def resolver_reprogramacion(reprogramacion, actor, aprobar, request=None):
+def solicitar_cambio_tutor(proyecto, tutor_propuesto, motivo, actor, request=None):
+    proyecto = ProyectoTitulacion.objects.select_for_update().select_related(
+        "maestrante__programa"
+    ).get(pk=proyecto.pk)
+    if not puede_solicitar_cambio_tutor(actor, proyecto):
+        raise PermissionDenied("No puede solicitar un cambio de tutor.")
+    asignacion = proyecto.asignaciones_tutor.select_for_update().get(
+        estado=EstadoAsignacion.ACTIVO
+    )
+    if asignacion.tutor_id == tutor_propuesto.pk:
+        raise ValidationError("Seleccione un tutor diferente al actual.")
+    _validar_tutor_elegible(proyecto, tutor_propuesto)
+    solicitud = SolicitudCambioTutor.objects.create(
+        proyecto=proyecto,
+        asignacion_actual=asignacion,
+        tutor_propuesto=tutor_propuesto,
+        motivo=str(motivo).strip(),
+        solicitado_por=actor,
+    )
+    registrar_solicitud_aprobacion(
+        proyecto=proyecto,
+        tipo="cambio_tutor",
+        tabla="solicitudes_cambio_tutor",
+        registro_id=solicitud.pk,
+    )
+    if request:
+        registrar_evento(
+            request,
+            accion="solicitar_cambio_tutor",
+            tabla="solicitudes_cambio_tutor",
+            registro_id=solicitud.pk,
+            descripcion="Se solicitó un cambio de tutor.",
+        )
+    return solicitud
+
+
+@transaction.atomic
+def resolver_cambio_tutor(solicitud, actor, aprobar, observaciones=None, request=None):
+    solicitud = SolicitudCambioTutor.objects.select_for_update().select_related(
+        "proyecto__maestrante__programa",
+        "asignacion_actual",
+        "tutor_propuesto__usuario",
+    ).get(pk=solicitud.pk)
+    Tutor.objects.select_for_update().filter(
+        pk=solicitud.tutor_propuesto_id
+    ).exists()
+    if (
+        rol_usuario(actor) != "coordinador"
+        or not usuario_tiene_permiso(actor, "CAMBIO_TUTOR_GESTIONAR")
+        or not proyectos_visibles(actor).filter(pk=solicitud.proyecto_id).exists()
+    ):
+        raise PermissionDenied("No puede resolver este cambio de tutor.")
+    if solicitud.estado != EstadoSolicitudCambioTutor.PENDIENTE:
+        raise ValidationError("La solicitud ya fue resuelta.")
+    observaciones = str(observaciones or "").strip() or None
+    if not aprobar and not observaciones:
+        raise ValidationError("Explique el motivo del rechazo.")
+    if aprobar:
+        asignacion_actual = AsignacionTutor.objects.select_for_update().get(
+            pk=solicitud.asignacion_actual_id
+        )
+        if asignacion_actual.estado != EstadoAsignacion.ACTIVO:
+            raise ValidationError("La asignación original ya no está activa.")
+        _validar_tutor_elegible(solicitud.proyecto, solicitud.tutor_propuesto)
+        asignacion_actual.estado = EstadoAsignacion.REEMPLAZADO
+        asignacion_actual.motivo_cambio = solicitud.motivo
+        asignacion_actual.save()
+        nueva_asignacion = AsignacionTutor.objects.create(
+            proyecto=solicitud.proyecto,
+            tutor=solicitud.tutor_propuesto,
+            asignado_por=actor,
+            motivo_cambio=solicitud.motivo,
+        )
+        sesiones_actualizadas = solicitud.proyecto.tutorias.filter(
+            fecha__gte=timezone.localdate(),
+            estado__in=[EstadoTutoria.PROGRAMADA, EstadoTutoria.REPROGRAMADA],
+        ).update(tutor=solicitud.tutor_propuesto)
+        solicitud.estado = EstadoSolicitudCambioTutor.APROBADA
+    else:
+        nueva_asignacion = None
+        sesiones_actualizadas = 0
+        solicitud.estado = EstadoSolicitudCambioTutor.RECHAZADA
+    solicitud.resuelto_por = actor
+    solicitud.observaciones_resolucion = observaciones
+    solicitud.fecha_resolucion = timezone.now()
+    solicitud.save()
+    _resolver_aprobacion(
+        proyecto=solicitud.proyecto,
+        tipo="cambio_tutor",
+        tabla="solicitudes_cambio_tutor",
+        registro_id=solicitud.pk,
+        actor=actor,
+        estado=EstadoAprobacion.APROBADO if aprobar else EstadoAprobacion.RECHAZADO,
+        observaciones=observaciones,
+    )
+    if request:
+        registrar_evento(
+            request,
+            accion="resolver_cambio_tutor",
+            tabla="solicitudes_cambio_tutor",
+            registro_id=solicitud.pk,
+            descripcion=(
+                f"Cambio de tutor {solicitud.estado}; "
+                f"{sesiones_actualizadas} tutorías futuras actualizadas."
+            ),
+        )
+    return nueva_asignacion
+
+
+def validar_horario_tutoria(
+    proyecto,
+    tutor,
+    fecha,
+    hora_inicio,
+    hora_fin,
+    excluir_tutoria_id=None,
+):
+    if fecha < timezone.localdate():
+        raise ValidationError("La fecha no puede estar en el pasado.")
+    if hora_fin <= hora_inicio:
+        raise ValidationError("La hora de fin debe ser posterior a la de inicio.")
+    disponible = DisponibilidadTutor.objects.filter(
+        tutor=tutor,
+        esta_activa=True,
+        dia_semana=fecha.weekday(),
+        hora_inicio__lte=hora_inicio,
+        hora_fin__gte=hora_fin,
+    ).exists()
+    if not disponible:
+        raise ValidationError("El horario está fuera de la disponibilidad del tutor.")
+    estados_ocupados = [
+        EstadoTutoria.PROGRAMADA,
+        EstadoTutoria.REPROGRAMADA,
+        EstadoTutoria.REALIZADA,
+    ]
+    cruces_tutor = Tutoria.objects.filter(
+        tutor=tutor,
+        fecha=fecha,
+        estado__in=estados_ocupados,
+        hora_inicio__lt=hora_fin,
+        hora_fin__gt=hora_inicio,
+    )
+    cruces_maestrante = Tutoria.objects.filter(
+        proyecto__maestrante_id=proyecto.maestrante_id,
+        fecha=fecha,
+        estado__in=estados_ocupados,
+        hora_inicio__lt=hora_fin,
+        hora_fin__gt=hora_inicio,
+    )
+    if excluir_tutoria_id:
+        cruces_tutor = cruces_tutor.exclude(pk=excluir_tutoria_id)
+        cruces_maestrante = cruces_maestrante.exclude(pk=excluir_tutoria_id)
+    if cruces_tutor.exists():
+        raise ValidationError("El tutor ya tiene otra tutoría en ese horario.")
+    if cruces_maestrante.exists():
+        raise ValidationError("El maestrante ya tiene otra tutoría en ese horario.")
+
+
+@transaction.atomic
+def programar_tutoria(proyecto, tutor, datos, actor, request=None):
+    proyecto = ProyectoTitulacion.objects.select_for_update().select_related(
+        "maestrante__programa"
+    ).get(pk=proyecto.pk)
+    Tutor.objects.select_for_update().filter(pk=tutor.pk).exists()
+    if not puede_gestionar_programacion(actor, proyecto):
+        raise PermissionDenied("No puede programar tutorías para este proyecto.")
+    asignacion = proyecto.asignaciones_tutor.filter(
+        tutor=tutor,
+        estado=EstadoAsignacion.ACTIVO,
+    ).first()
+    if asignacion is None:
+        raise ValidationError("El tutor ya no es la asignación activa del proyecto.")
+    if proyecto.tutorias.count() >= 8:
+        raise ValidationError("El proyecto ya tiene las ocho tutorías programadas.")
+    numero = int(datos["numero_tutoria"])
+    if proyecto.tutorias.filter(numero_tutoria=numero).exists():
+        raise ValidationError(f"La tutoría {numero} ya está programada.")
+    validar_horario_tutoria(
+        proyecto,
+        tutor,
+        datos["fecha"],
+        datos["hora_inicio"],
+        datos["hora_fin"],
+    )
+    tutoria = Tutoria(
+        proyecto=proyecto,
+        tutor=tutor,
+        numero_tutoria=numero,
+        fecha=datos["fecha"],
+        hora_inicio=datos["hora_inicio"],
+        hora_fin=datos["hora_fin"],
+        enlace_virtual=datos["enlace_virtual"],
+        programada_por=actor,
+    )
+    tutoria.full_clean()
+    tutoria.save()
+    if request:
+        registrar_evento(
+            request,
+            accion="programar_tutoria",
+            tabla="tutorias",
+            registro_id=tutoria.pk,
+            descripcion=f"Se programó la tutoría {numero}.",
+        )
+    return tutoria
+
+
+@transaction.atomic
+def solicitar_reprogramacion(tutoria, datos, actor, request=None):
+    tutoria = Tutoria.objects.select_for_update().select_related(
+        "proyecto__maestrante", "tutor"
+    ).get(pk=tutoria.pk)
+    rol = rol_usuario(actor)
+    permiso = (
+        usuario_tiene_permiso(actor, "REPROGRAMACION_GESTIONAR")
+        if rol == "coordinador"
+        else usuario_tiene_permiso(actor, "REPROGRAMACION_SOLICITAR")
+    )
+    if (
+        rol not in {"maestrante", "tutor", "coordinador"}
+        or not permiso
+        or not proyectos_visibles(actor).filter(pk=tutoria.proyecto_id).exists()
+    ):
+        raise PermissionDenied("No puede solicitar esta reprogramación.")
+    if tutoria.estado in {EstadoTutoria.REALIZADA, EstadoTutoria.CANCELADA}:
+        raise ValidationError("Esta tutoría ya no puede reprogramarse.")
+    if tutoria.reprogramaciones.filter(estado=EstadoReprogramacion.PENDIENTE).exists():
+        raise ValidationError("Ya existe una reprogramación pendiente.")
+    validar_horario_tutoria(
+        tutoria.proyecto,
+        tutoria.tutor,
+        datos["fecha_nueva"],
+        datos["hora_inicio_nueva"],
+        datos["hora_fin_nueva"],
+        excluir_tutoria_id=tutoria.pk,
+    )
+    reprogramacion = ReprogramacionTutoria.objects.create(
+        tutoria=tutoria,
+        fecha_anterior=tutoria.fecha,
+        hora_inicio_anterior=tutoria.hora_inicio,
+        hora_fin_anterior=tutoria.hora_fin,
+        fecha_nueva=datos["fecha_nueva"],
+        hora_inicio_nueva=datos["hora_inicio_nueva"],
+        hora_fin_nueva=datos["hora_fin_nueva"],
+        motivo=datos["motivo"],
+        solicitado_por=actor,
+    )
+    registrar_solicitud_aprobacion(
+        proyecto=tutoria.proyecto,
+        tipo="reprogramacion",
+        tabla="reprogramaciones_tutoria",
+        registro_id=reprogramacion.pk,
+    )
+    if request:
+        registrar_evento(
+            request,
+            accion="solicitar_reprogramacion",
+            tabla="reprogramaciones_tutoria",
+            registro_id=reprogramacion.pk,
+            descripcion="Se solicitó reprogramar una tutoría.",
+        )
+    return reprogramacion
+
+
+@transaction.atomic
+def resolver_reprogramacion(
+    reprogramacion,
+    actor,
+    aprobar,
+    request=None,
+    observaciones=None,
+):
+    reprogramacion = ReprogramacionTutoria.objects.select_for_update().select_related(
+        "tutoria__proyecto__maestrante", "tutoria__tutor"
+    ).get(pk=reprogramacion.pk)
+    Tutor.objects.select_for_update().filter(
+        pk=reprogramacion.tutoria.tutor_id
+    ).exists()
     if rol_usuario(actor) != "coordinador" or not proyectos_visibles(actor).filter(pk=reprogramacion.tutoria.proyecto_id).exists():
         raise PermissionDenied("No puede resolver esta reprogramación.")
     if reprogramacion.estado != EstadoReprogramacion.PENDIENTE:
         raise ValidationError("La solicitud ya fue resuelta.")
+    observaciones = str(observaciones or "").strip() or None
+    if not aprobar and not observaciones:
+        raise ValidationError("Explique el motivo del rechazo.")
+    if aprobar:
+        validar_horario_tutoria(
+            reprogramacion.tutoria.proyecto,
+            reprogramacion.tutoria.tutor,
+            reprogramacion.fecha_nueva,
+            reprogramacion.hora_inicio_nueva,
+            reprogramacion.hora_fin_nueva,
+            excluir_tutoria_id=reprogramacion.tutoria_id,
+        )
     reprogramacion.estado = EstadoReprogramacion.APROBADA if aprobar else EstadoReprogramacion.RECHAZADA
     reprogramacion.aprobado_por = actor
+    reprogramacion.observaciones_resolucion = observaciones
     reprogramacion.save()
     if aprobar:
         tutoria = reprogramacion.tutoria
@@ -335,6 +698,7 @@ def resolver_reprogramacion(reprogramacion, actor, aprobar, request=None):
         registro_id=reprogramacion.pk,
         actor=actor,
         estado=EstadoAprobacion.APROBADO if aprobar else EstadoAprobacion.RECHAZADO,
+        observaciones=observaciones,
     )
     if request:
         registrar_evento(request, accion="resolver_reprogramacion", tabla="reprogramaciones_tutoria", registro_id=reprogramacion.pk, descripcion=f"Reprogramación {reprogramacion.estado}.")
@@ -363,6 +727,70 @@ def resolver_cambio_tema(solicitud: SolicitudCambioTema, actor, aprobar, request
     )
     if request:
         registrar_evento(request, accion="resolver_cambio_tema", tabla="solicitudes_cambio_tema", registro_id=solicitud.pk, descripcion=f"Solicitud de cambio de tema {solicitud.estado}.")
+    return aprobacion
+
+
+@transaction.atomic
+def resolver_cambio_modalidad(
+    solicitud: SolicitudCambioModalidad,
+    actor,
+    aprobar,
+    observaciones=None,
+    request=None,
+):
+    if not puede_revisar_cambio_modalidad(actor, solicitud.proyecto):
+        raise PermissionDenied("No puede resolver esta solicitud.")
+    if solicitud.estado != EstadoCambioModalidad.PENDIENTE:
+        raise ValidationError("La solicitud ya fue resuelta.")
+    if aprobar and not modalidad_disponible(
+        solicitud.proyecto.maestrante.programa,
+        solicitud.modalidad_propuesta,
+    ):
+        raise ValidationError("La modalidad propuesta ya no está disponible.")
+    observaciones = str(observaciones or "").strip() or None
+    if not aprobar and not observaciones:
+        raise ValidationError("Debe explicar el motivo del rechazo.")
+
+    solicitud.estado = (
+        EstadoCambioModalidad.APROBADA
+        if aprobar
+        else EstadoCambioModalidad.RECHAZADA
+    )
+    solicitud.resuelto_por = actor
+    solicitud.observaciones_resolucion = observaciones
+    solicitud.fecha_resolucion = timezone.now()
+    solicitud.save()
+
+    if aprobar:
+        proyecto = solicitud.proyecto
+        proyecto.modalidad = solicitud.modalidad_propuesta
+        proyecto.actualizado_por = actor
+        proyecto.save(update_fields=("modalidad", "actualizado_por", "fecha_actualizacion"))
+        if proyecto.modalidad != ModalidadProyecto.ARTICULO:
+            proyecto.articulos.filter(esta_activo=True).update(
+                esta_activo=False,
+                fecha_actualizacion=timezone.now(),
+            )
+
+    aprobacion = _resolver_aprobacion(
+        proyecto=solicitud.proyecto,
+        tipo="cambio_modalidad",
+        tabla="solicitudes_cambio_modalidad",
+        registro_id=solicitud.pk,
+        actor=actor,
+        estado=(
+            EstadoAprobacion.APROBADO if aprobar else EstadoAprobacion.RECHAZADO
+        ),
+        observaciones=observaciones,
+    )
+    if request:
+        registrar_evento(
+            request,
+            accion="resolver_cambio_modalidad",
+            tabla="solicitudes_cambio_modalidad",
+            registro_id=solicitud.pk,
+            descripcion=f"Solicitud de cambio de modalidad {solicitud.estado}.",
+        )
     return aprobacion
 
 

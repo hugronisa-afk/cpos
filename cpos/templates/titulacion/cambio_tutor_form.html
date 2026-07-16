@@ -1,0 +1,21 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><h2>Solicitar cambio de tutor</h2><p>{{ proyecto.tema }}</p></div>
+  <a class="btn secondary" href="{% url 'titulacion:proyecto_detail' proyecto.pk %}">Volver</a>
+</div>
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Asignación actual</h3>
+    <p><b>{{ asignacion.tutor.usuario.nombre_completo }}</b></p>
+    <p>{{ asignacion.tutor.especialidad|default:'Sin especialidad registrada' }}</p>
+    <p class="small">La asignación continuará activa hasta que coordinación apruebe el cambio.</p>
+  </div>
+  <form class="card form-card" method="post" novalidate>
+    {% csrf_token %}
+    {% include 'accounts/partials/form_fields.html' %}
+    <div class="form-actions"><button class="btn" type="submit">Enviar solicitud</button></div>
+  </form>
+</div>
+{% endblock %}

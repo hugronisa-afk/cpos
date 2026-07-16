@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from datetime import timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -7,7 +8,9 @@ from django.db.models import ForeignKey, OneToOneField
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, override_settings
+from django.template.loader import get_template
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import (
     Aprobacion,
@@ -15,16 +18,34 @@ from .models import (
     Articulo,
     AsignacionTutor,
     AsistenciaTutoria,
+    ConfiguracionModalidadPrograma,
+    DocumentoProcesoAprobacion,
+    DisponibilidadTutor,
     EstadoProyecto,
     EstadoTutor,
     Grabacion,
+    ModalidadProyecto,
+    PasoAprobacion,
+    ProcesoAprobacion,
     ProyectoTitulacion,
     ReprogramacionTutoria,
     SolicitudCambioTema,
+    SolicitudCambioModalidad,
+    SolicitudCambioTutor,
     Tutor,
+    TutorPrograma,
     Tutoria,
     TipoAprobacion,
 )
+from .aprobaciones import PLANTILLAS_PASOS
+from .forms import (
+    DisponibilidadTutorForm,
+    ResolucionCambioTutorForm,
+    ResolucionProyectoForm,
+    TutoriaForm,
+    RevisionPasoAprobacionForm,
+)
+from .modalidades import modalidades_disponibles, obtener_regla_modalidad
 from .services import puede_escribir, rol_usuario
 from .storage import eliminar_archivo, guardar_archivo, respuesta_descarga
 
@@ -67,6 +88,9 @@ class TitulacionModelContractTests(SimpleTestCase):
         contratos = {
             ProyectoTitulacion: "proyectos_titulacion",
             AsignacionTutor: "asignaciones_tutor",
+            TutorPrograma: "tutores_programas",
+            DisponibilidadTutor: "disponibilidades_tutor",
+            SolicitudCambioTutor: "solicitudes_cambio_tutor",
             Tutoria: "tutorias",
             AsistenciaTutoria: "asistencias_tutoria",
             ReprogramacionTutoria: "reprogramaciones_tutoria",
@@ -74,6 +98,11 @@ class TitulacionModelContractTests(SimpleTestCase):
             Grabacion: "grabaciones",
             Articulo: "articulos",
             SolicitudCambioTema: "solicitudes_cambio_tema",
+            SolicitudCambioModalidad: "solicitudes_cambio_modalidad",
+            ConfiguracionModalidadPrograma: "configuraciones_modalidad_programa",
+            ProcesoAprobacion: "procesos_aprobacion",
+            PasoAprobacion: "pasos_aprobacion",
+            DocumentoProcesoAprobacion: "documentos_proceso_aprobacion",
             Aprobacion: "aprobaciones",
         }
         for modelo, tabla in contratos.items():
@@ -99,6 +128,14 @@ class TitulacionModelContractTests(SimpleTestCase):
         self.assertIn(
             "archivo_proyecto",
             {valor for valor, _ in TipoAprobacion.choices},
+        )
+        self.assertIn(
+            "cambio_modalidad",
+            {valor for valor, _ in TipoAprobacion.choices},
+        )
+        self.assertIsInstance(
+            ConfiguracionModalidadPrograma._meta.get_field("programa"),
+            OneToOneField,
         )
         for campo in ("nombre_original", "extension", "tamano_bytes"):
             self.assertIsNotNone(Grabacion._meta.get_field(campo))
@@ -126,11 +163,20 @@ class TitulacionRoutesTests(SimpleTestCase):
             "proyecto_detail": ({"pk": 7}, "/titulacion/proyectos/7/"),
             "proyecto_revisar": ({"pk": 7}, "/titulacion/proyectos/7/revisar/"),
             "asignacion_create": ({"pk": 7}, "/titulacion/proyectos/7/asignar-tutor/"),
+            "cambio_tutor_create": ({"proyecto_pk": 7}, "/titulacion/proyectos/7/cambio-tutor/"),
+            "cambio_tutor_resolver": ({"pk": 8}, "/titulacion/cambios-tutor/8/resolver/"),
+            "tutor_disponibilidad_create": ({"pk": 7}, "/titulacion/tutores/7/disponibilidad/crear/"),
+            "calendario_tutorias": (None, "/titulacion/calendario/"),
             "tutoria_create": ({"pk": 7}, "/titulacion/proyectos/7/tutorias/programar/"),
             "tutoria_registrar": ({"pk": 8}, "/titulacion/tutorias/8/registrar/"),
             "grabacion_create": ({"pk": 8}, "/titulacion/tutorias/8/grabaciones/registrar/"),
             "articulo_edit": ({"proyecto_pk": 7}, "/titulacion/proyectos/7/articulo/editar/"),
             "cambio_tema_create": ({"proyecto_pk": 7}, "/titulacion/proyectos/7/cambio-tema/"),
+            "cambio_modalidad_create": ({"proyecto_pk": 7}, "/titulacion/proyectos/7/cambio-modalidad/"),
+            "cambio_modalidad_resolver": ({"pk": 7}, "/titulacion/cambios-modalidad/7/resolver/"),
+            "modalidades_configuracion": (None, "/titulacion/modalidades/configuracion/"),
+            "proceso_aprobacion_detail": ({"pk": 7}, "/titulacion/aprobaciones/procesos/7/"),
+            "paso_aprobacion_resolver": ({"pk": 8}, "/titulacion/aprobaciones/pasos/8/resolver/"),
             "archivo_download": ({"pk": 9}, "/titulacion/archivos/9/descargar/"),
             "archivo_revisar": ({"pk": 9}, "/titulacion/archivos/9/revisar/"),
             "grabacion_download": ({"pk": 9}, "/titulacion/grabaciones/9/descargar/"),
@@ -142,6 +188,131 @@ class TitulacionRoutesTests(SimpleTestCase):
                     reverse(f"titulacion:{nombre}", kwargs=kwargs),
                     ruta,
                 )
+
+
+class MotorModalidadesTests(SimpleTestCase):
+    def test_modalidades_estandar_tienen_producto_y_evidencias_propias(self):
+        articulo = obtener_regla_modalidad(None, ModalidadProyecto.ARTICULO)
+        investigacion = obtener_regla_modalidad(None, ModalidadProyecto.INVESTIGACION)
+        examen = obtener_regla_modalidad(None, ModalidadProyecto.EXAMEN)
+
+        self.assertTrue(articulo["requiere_articulo"])
+        self.assertTrue(articulo["requiere_envio_revista"])
+        self.assertFalse(investigacion["requiere_articulo"])
+        self.assertEqual(investigacion["tipo_archivo_final"], "pdf")
+        self.assertIn("documento_final", investigacion["tipos_evidencia"])
+        self.assertEqual(examen["tipo_archivo_final"], "resolucion")
+        self.assertIn("acta_resultado", examen["tipos_evidencia"])
+
+    @patch("apps.titulacion.modalidades._configuracion_otra")
+    def test_otra_solo_aparece_si_el_programa_la_habilita(self, configuracion):
+        programa = SimpleNamespace(pk=9)
+        configuracion.return_value = None
+        self.assertNotIn(
+            ModalidadProyecto.OTRA,
+            {codigo for codigo, _ in modalidades_disponibles(programa)},
+        )
+
+        configuracion.return_value = SimpleNamespace(nombre="Proyecto aplicado")
+        self.assertIn(
+            (ModalidadProyecto.OTRA, "Proyecto aplicado"),
+            modalidades_disponibles(programa),
+        )
+
+    def test_plantillas_de_modalidad_compilan(self):
+        for nombre in (
+            "titulacion/proyecto_detail.html",
+            "titulacion/modalidades_configuracion.html",
+            "seguimiento/dashboard.html",
+            "seguimiento/checklist_cierre.html",
+            "titulacion/aprobaciones.html",
+            "titulacion/proceso_aprobacion_detail.html",
+            "titulacion/calendario_tutorias.html",
+            "titulacion/cambio_tutor_form.html",
+            "titulacion/cambio_tutor_resolver.html",
+            "titulacion/reprogramacion_resolver.html",
+        ):
+            with self.subTest(plantilla=nombre):
+                self.assertIsNotNone(get_template(nombre))
+
+
+class AprobacionFormalContractTests(SimpleTestCase):
+    def test_proyecto_se_revisa_por_coordinacion_y_finaliza_supervision(self):
+        pasos = PLANTILLAS_PASOS["proyecto"]
+        self.assertEqual(len(pasos), 3)
+        self.assertEqual(
+            [paso["rol_responsable"] for paso in pasos],
+            ["coordinador", "coordinador", "supervisor"],
+        )
+        self.assertEqual(pasos[-1]["codigo"], "aprobacion_supervisor")
+
+    def test_cambios_conservan_cuatro_instancias_de_decision(self):
+        for tipo in ("cambio_tema", "cambio_modalidad"):
+            with self.subTest(tipo=tipo):
+                pasos = PLANTILLAS_PASOS[tipo]
+                self.assertEqual(len(pasos), 4)
+                self.assertEqual(pasos[0]["rol_responsable"], "coordinador")
+                self.assertEqual(pasos[-1]["rol_responsable"], "supervisor")
+
+    def test_observar_solo_se_ofrece_en_revision_de_proyecto(self):
+        con_observacion = RevisionPasoAprobacionForm(permite_observar=True)
+        sin_observacion = RevisionPasoAprobacionForm(permite_observar=False)
+        self.assertIn(
+            "observar",
+            {codigo for codigo, _ in con_observacion.fields["decision"].choices},
+        )
+        self.assertNotIn(
+            "observar",
+            {codigo for codigo, _ in sin_observacion.fields["decision"].choices},
+        )
+
+    def test_resolucion_exige_numero_fecha_y_pdf_si_no_existe(self):
+        formulario = ResolucionProyectoForm(instance=ProyectoTitulacion())
+        self.assertTrue(formulario.fields["numero_resolucion"].required)
+        self.assertTrue(formulario.fields["fecha_aprobacion"].required)
+        self.assertTrue(formulario.fields["documento_resolucion"].required)
+
+
+class TutoresAgendaContractTests(SimpleTestCase):
+    def test_programacion_solo_ofrece_los_ocho_numeros_faltantes(self):
+        class TutoríasFalsas:
+            def values_list(self, *args, **kwargs):
+                return [1, 3, 8]
+
+        proyecto = SimpleNamespace(tutorias=TutoríasFalsas())
+        formulario = TutoriaForm(proyecto=proyecto)
+        disponibles = {
+            valor for valor, _ in formulario.fields["numero_tutoria"].choices
+        }
+        self.assertEqual(disponibles, {2, 4, 5, 6, 7})
+
+    def test_tutoria_exige_fecha_futura_y_enlace_https(self):
+        formulario = TutoriaForm(
+            data={
+                "numero_tutoria": 1,
+                "fecha": timezone.localdate() - timedelta(days=1),
+                "hora_inicio": "10:00",
+                "hora_fin": "11:00",
+                "enlace_virtual": "http://sala.example.test",
+            }
+        )
+        self.assertFalse(formulario.is_valid())
+        self.assertIn("fecha", formulario.errors)
+        self.assertIn("enlace_virtual", formulario.errors)
+
+    def test_disponibilidad_rechaza_bloque_invertido(self):
+        formulario = DisponibilidadTutorForm(
+            data={"dia_semana": 0, "hora_inicio": "12:00", "hora_fin": "11:00"}
+        )
+        self.assertFalse(formulario.is_valid())
+        self.assertIn("hora_fin", formulario.errors)
+
+    def test_rechazo_de_cambio_tutor_exige_explicacion(self):
+        formulario = ResolucionCambioTutorForm(
+            data={"decision": "rechazar", "observaciones": ""}
+        )
+        self.assertFalse(formulario.is_valid())
+        self.assertIn("observaciones", formulario.errors)
 
 
 class TitulacionStorageTests(SimpleTestCase):

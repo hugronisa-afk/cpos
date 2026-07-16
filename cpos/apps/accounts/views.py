@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import (
     authenticate,
@@ -9,17 +11,21 @@ from django.contrib.auth import (
     logout as auth_logout,
     update_session_auth_hash,
 )
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
+from django.contrib.sessions.models import Session
 from django.db import DatabaseError, connection, transaction
 from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .decorators import permiso_required, rol_required, usuario_activo_required
 from .forms import (
     CohorteForm,
+    ImportacionUsuariosForm,
     LoginForm,
     MaestranteForm,
     PerfilForm,
@@ -32,6 +38,7 @@ from .forms import (
     UsuarioPasswordForm,
     UsuarioUpdateForm,
 )
+from .importacion import COLUMNAS_PLANTILLA, procesar_importacion_usuarios
 from .models import (
     Bitacora,
     Cohorte,
@@ -43,9 +50,12 @@ from .models import (
     UsuarioCPOS,
 )
 from .services import (
+    ROL_ADMIN_DESARROLLADOR,
+    es_administrador_desarrollador,
     obtener_permisos_usuario,
     redireccion_por_rol,
     registrar_bitacora,
+    usuario_tiene_permiso,
 )
 
 
@@ -56,12 +66,31 @@ def _es_supervisor(usuario):
     return usuario.rol.nombre.strip().lower() == "supervisor"
 
 
+def _es_admin_desarrollador(usuario):
+    return es_administrador_desarrollador(usuario)
+
+
 def _es_coordinador(usuario):
     return usuario.rol.nombre.strip().lower() == "coordinador"
 
 
+def _proteger_cuenta_tecnica(actor, usuario_objetivo):
+    if (
+        usuario_objetivo.rol.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR
+        and not _es_admin_desarrollador(actor)
+    ):
+        raise PermissionDenied(
+            "Las cuentas técnicas solo pueden ser administradas por otra cuenta técnica."
+        )
+
+
 def _paginar(request, consulta, por_pagina=20):
     return Paginator(consulta, por_pagina).get_page(request.GET.get("page"))
+
+
+def _celda_csv_segura(valor):
+    texto = str(valor or "")
+    return f"'{texto}" if texto.startswith(("=", "+", "-", "@")) else texto
 
 
 def _agregar_error_formulario(formulario, error):
@@ -97,7 +126,7 @@ def _registrar_accion(
 
 def _programas_visibles_para(usuario):
     consulta = Programa.objects.select_related("coordinador", "coordinador__rol")
-    if _es_supervisor(usuario):
+    if _es_supervisor(usuario) or _es_admin_desarrollador(usuario):
         return consulta
     if _es_coordinador(usuario):
         return consulta.filter(coordinador=usuario)
@@ -119,7 +148,7 @@ def _maestrantes_visibles_para(usuario):
         "programa",
         "cohorte",
     )
-    if _es_supervisor(usuario):
+    if _es_supervisor(usuario) or _es_admin_desarrollador(usuario):
         return consulta
     if _es_coordinador(usuario):
         return consulta.filter(programa__coordinador=usuario)
@@ -130,7 +159,7 @@ def _maestrantes_visibles_para(usuario):
 
 def _usuarios_visibles_para(usuario):
     consulta = UsuarioCPOS.objects.select_related("rol")
-    if _es_supervisor(usuario):
+    if _es_supervisor(usuario) or _es_admin_desarrollador(usuario):
         return consulta
     if _es_coordinador(usuario):
         return consulta.filter(
@@ -214,7 +243,23 @@ def dashboard_accounts(request):
     indicadores = {}
     perfil_maestrante = None
 
-    if _es_supervisor(usuario):
+    if _es_admin_desarrollador(usuario):
+        indicadores = {
+            "usuarios": UsuarioCPOS.objects.count(),
+            "usuarios_activos": UsuarioCPOS.objects.filter(
+                estado=EstadoUsuario.ACTIVO
+            ).count(),
+            "usuarios_bloqueados": UsuarioCPOS.objects.filter(
+                estado=EstadoUsuario.BLOQUEADO
+            ).count(),
+            "cuentas_tecnicas": UsuarioCPOS.objects.filter(
+                rol__nombre__iexact=ROL_ADMIN_DESARROLLADOR,
+                estado=EstadoUsuario.ACTIVO,
+            ).count(),
+            "programas": Programa.objects.count(),
+            "cohortes": Cohorte.objects.count(),
+        }
+    elif _es_supervisor(usuario):
         indicadores = {
             "usuarios": UsuarioCPOS.objects.count(),
             "usuarios_activos": UsuarioCPOS.objects.filter(
@@ -307,6 +352,10 @@ def usuarios_list(request):
     if estado:
         consulta = consulta.filter(estado=estado)
 
+    cuentas_tecnicas = UsuarioCPOS.objects.filter(
+        rol__nombre__iexact=ROL_ADMIN_DESARROLLADOR,
+        estado=EstadoUsuario.ACTIVO,
+    ).count()
     return render(
         request,
         "accounts/usuarios_list.html",
@@ -316,6 +365,10 @@ def usuarios_list(request):
             "busqueda": busqueda,
             "rol_seleccionado": rol_id,
             "estado_seleccionado": estado,
+            "cuentas_tecnicas": cuentas_tecnicas,
+            "puede_bootstrap_tecnico": (
+                _es_supervisor(request.user) and cuentas_tecnicas == 0
+            ),
             "page_title": "Usuarios",
             "active_page": "usuarios",
         },
@@ -354,6 +407,10 @@ def usuario_detail(request, pk):
         {
             "usuario_cpos": usuario,
             "permisos_efectivos": obtener_permisos_usuario(usuario),
+            "puede_administrar": not (
+                usuario.rol.nombre.strip().lower() == ROL_ADMIN_DESARROLLADOR
+                and not _es_admin_desarrollador(request.user)
+            ),
             "page_title": "Detalle de usuario",
         },
     )
@@ -363,6 +420,7 @@ def usuario_detail(request, pk):
 @require_http_methods(["GET", "POST"])
 def usuario_update(request, pk):
     usuario = get_object_or_404(_usuarios_visibles_para(request.user), pk=pk)
+    _proteger_cuenta_tecnica(request.user, usuario)
     formulario = UsuarioUpdateForm(
         request.POST or None,
         instance=usuario,
@@ -393,6 +451,7 @@ def usuario_update(request, pk):
 @require_POST
 def usuario_toggle_estado(request, pk):
     usuario = get_object_or_404(_usuarios_visibles_para(request.user), pk=pk)
+    _proteger_cuenta_tecnica(request.user, usuario)
     estado_nuevo = (
         EstadoUsuario.INACTIVO
         if usuario.estado == EstadoUsuario.ACTIVO
@@ -416,6 +475,7 @@ def usuario_toggle_estado(request, pk):
 @require_POST
 def usuario_bloquear(request, pk):
     usuario = get_object_or_404(_usuarios_visibles_para(request.user), pk=pk)
+    _proteger_cuenta_tecnica(request.user, usuario)
     formulario = UsuarioEstadoForm(
         {"estado": EstadoUsuario.BLOQUEADO},
         usuario=usuario,
@@ -434,6 +494,7 @@ def usuario_bloquear(request, pk):
 @require_POST
 def usuario_desbloquear(request, pk):
     usuario = get_object_or_404(_usuarios_visibles_para(request.user), pk=pk)
+    _proteger_cuenta_tecnica(request.user, usuario)
     formulario = UsuarioEstadoForm(
         {"estado": EstadoUsuario.ACTIVO},
         usuario=usuario,
@@ -452,6 +513,7 @@ def usuario_desbloquear(request, pk):
 @require_http_methods(["GET", "POST"])
 def usuario_cambiar_password(request, pk):
     usuario = get_object_or_404(_usuarios_visibles_para(request.user), pk=pk)
+    _proteger_cuenta_tecnica(request.user, usuario)
     conservar_session_key = (
         request.session.session_key if usuario.pk == request.user.pk else None
     )
@@ -492,7 +554,7 @@ def roles_list(request):
     )
 
 
-@rol_required("supervisor")
+@rol_required("administrador_desarrollador")
 @require_http_methods(["GET", "POST"])
 def rol_create(request):
     formulario = RolForm(request.POST or None)
@@ -516,7 +578,7 @@ def rol_create(request):
     )
 
 
-@rol_required("supervisor")
+@rol_required("administrador_desarrollador")
 @require_http_methods(["GET", "POST"])
 def rol_update(request, pk):
     rol = get_object_or_404(Rol, pk=pk)
@@ -575,7 +637,7 @@ def permisos_list(request):
     )
 
 
-@rol_required("supervisor")
+@rol_required("administrador_desarrollador")
 @require_http_methods(["GET", "POST"])
 def permiso_create(request):
     formulario = PermisoForm(request.POST or None)
@@ -599,7 +661,7 @@ def permiso_create(request):
     )
 
 
-@rol_required("supervisor")
+@rol_required("administrador_desarrollador")
 @require_http_methods(["GET", "POST"])
 def permiso_update(request, pk):
     permiso = get_object_or_404(Permiso, pk=pk)
@@ -629,7 +691,7 @@ def permiso_update(request, pk):
     )
 
 
-@rol_required("supervisor")
+@rol_required("administrador_desarrollador")
 @require_http_methods(["GET", "POST"])
 def rol_permisos_update(request, pk):
     rol = get_object_or_404(Rol, pk=pk)
@@ -920,7 +982,7 @@ def maestrante_detail(request, pk):
 @permiso_required("BITACORA_VER")
 def bitacora_list(request):
     consulta = Bitacora.objects.select_related("usuario", "usuario__rol")
-    if not _es_supervisor(request.user):
+    if not (_es_supervisor(request.user) or _es_admin_desarrollador(request.user)):
         consulta = consulta.filter(usuario=request.user)
     modulos_visibles = consulta.order_by("modulo").values_list(
         "modulo", flat=True
@@ -945,7 +1007,7 @@ def bitacora_list(request):
     )
 
 
-@rol_required("coordinador", "supervisor")
+@rol_required("coordinador", "supervisor", "administrador_desarrollador")
 def verificar_bd(request):
     contexto = {
         "db_ok": False,
@@ -969,6 +1031,160 @@ def verificar_bd(request):
         # No se muestran host, credenciales, consultas ni mensajes internos.
         contexto["mensaje"] = "No fue posible conectar con la base de datos."
     return render(request, "accounts/verificar_bd.html", contexto)
+
+
+@permiso_required("IMPORTACION_USUARIOS")
+@require_http_methods(["GET", "POST"])
+def importar_usuarios(request):
+    formulario = ImportacionUsuariosForm(request.POST or None, request.FILES or None)
+    resultado = None
+    if request.method == "POST" and formulario.is_valid():
+        importar = request.POST.get("accion") == "importar"
+        try:
+            resultado = procesar_importacion_usuarios(
+                formulario.cleaned_data["archivo"],
+                importar=importar,
+                actor=request.user,
+                request=request,
+            )
+        except ValidationError as error:
+            _agregar_error_formulario(formulario, error)
+        else:
+            request.session["ultima_importacion_usuarios"] = resultado
+            if importar:
+                messages.success(
+                    request,
+                    f'Se crearon {resultado["creadas"]} cuentas; '
+                    f'{resultado["errores"]} filas presentaron errores.',
+                )
+            elif resultado["errores"]:
+                messages.warning(
+                    request,
+                    "La validación terminó con filas que deben corregirse.",
+                )
+            else:
+                messages.success(
+                    request,
+                    "Todas las filas son válidas. Puede importar el mismo archivo.",
+                )
+    return render(
+        request,
+        "accounts/importar_usuarios.html",
+        {
+            "form": formulario,
+            "resultado": resultado,
+            "page_title": "Importar usuarios",
+            "active_page": "importar_usuarios",
+        },
+    )
+
+
+@permiso_required("IMPORTACION_USUARIOS")
+def descargar_plantilla_usuarios(request):
+    respuesta = HttpResponse(content_type="text/csv; charset=utf-8")
+    respuesta["Content-Disposition"] = 'attachment; filename="plantilla_usuarios_cpos.csv"'
+    respuesta.write("\ufeff")
+    escritor = csv.writer(respuesta)
+    escritor.writerow(COLUMNAS_PLANTILLA)
+    escritor.writerow(
+        (
+            "Ana María",
+            "Pérez López",
+            "1200000010",
+            "ana.perez@utb.edu.ec",
+            "0999999999",
+            "maestrante",
+            "activo",
+            "MTI",
+            "2026-A",
+            "MTI-2026-001",
+        )
+    )
+    return respuesta
+
+
+@permiso_required("IMPORTACION_USUARIOS")
+def exportar_resultado_importacion(request):
+    resultado = request.session.get("ultima_importacion_usuarios")
+    if not resultado:
+        messages.warning(request, "Todavía no existe un resultado para exportar.")
+        return redirect("accounts:importar_usuarios")
+    respuesta = HttpResponse(content_type="text/csv; charset=utf-8")
+    respuesta["Content-Disposition"] = 'attachment; filename="resultado_importacion_cpos.csv"'
+    respuesta.write("\ufeff")
+    escritor = csv.writer(respuesta)
+    escritor.writerow(
+        ("linea", "nombres", "apellidos", "correo", "rol", "usuario", "resultado", "errores")
+    )
+    for fila in resultado["filas"]:
+        datos = fila["datos"]
+        escritor.writerow(
+            (
+                fila["linea"],
+                _celda_csv_segura(datos["nombres"]),
+                _celda_csv_segura(datos["apellidos"]),
+                _celda_csv_segura(datos["correo"]),
+                _celda_csv_segura(datos["rol"]),
+                _celda_csv_segura(fila.get("nombre_usuario", "")),
+                fila["estado_resultado"],
+                _celda_csv_segura(" | ".join(fila["errores"])),
+            )
+        )
+    return respuesta
+
+
+@permiso_required("MANTENIMIENTO_VER")
+@require_http_methods(["GET", "POST"])
+def mantenimiento_sistema(request):
+    if request.method == "POST":
+        if not usuario_tiene_permiso(request.user, "MANTENIMIENTO_EJECUTAR"):
+            raise PermissionDenied("No tiene permiso para ejecutar mantenimiento.")
+        if request.POST.get("accion") != "limpiar_sesiones_expiradas":
+            raise PermissionDenied("La acción de mantenimiento no está autorizada.")
+        sesiones, _ = Session.objects.filter(expire_date__lt=timezone.now()).delete()
+        _registrar_accion(
+            request,
+            modulo="mantenimiento",
+            accion="limpiar_sesiones_expiradas",
+            tabla_afectada="django_session",
+            registro_id=None,
+            descripcion=f"Se eliminaron {sesiones} sesiones expiradas.",
+        )
+        messages.success(request, f"Se eliminaron {sesiones} sesiones expiradas.")
+        return redirect("accounts:mantenimiento")
+
+    db_ok = False
+    esquema = "No disponible"
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_schema(), 1")
+            esquema, valor = cursor.fetchone()
+            db_ok = valor == 1
+    except DatabaseError:
+        pass
+    contexto = {
+        "db_ok": db_ok,
+        "esquema": esquema,
+        "usuarios": UsuarioCPOS.objects.count() if db_ok else 0,
+        "programas": Programa.objects.count() if db_ok else 0,
+        "cohortes": Cohorte.objects.count() if db_ok else 0,
+        "sesiones_expiradas": Session.objects.filter(
+            expire_date__lt=timezone.now()
+        ).count(),
+        "cuentas_tecnicas": UsuarioCPOS.objects.filter(
+            rol__nombre__iexact=ROL_ADMIN_DESARROLLADOR,
+            estado=EstadoUsuario.ACTIVO,
+        ).count() if db_ok else 0,
+        "debug": settings.DEBUG,
+        "cookie_segura": settings.SESSION_COOKIE_SECURE,
+        "puede_ejecutar": usuario_tiene_permiso(
+            request.user,
+            "MANTENIMIENTO_EJECUTAR",
+        ),
+        "page_title": "Mantenimiento del sistema",
+        "active_page": "mantenimiento",
+    }
+    return render(request, "accounts/mantenimiento.html", contexto)
 
 
 def acceso_denegado(request, exception=None):

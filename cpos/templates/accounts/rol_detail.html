@@ -3,7 +3,7 @@
 {% block accounts_content %}
 <div class="page-head">
   <div><h2>Rol {{ rol.nombre|capfirst }}</h2><p>{{ rol.descripcion|default:'Sin descripción registrada.' }}</p></div>
-  <div class="actions"><a class="btn secondary" href="{% url 'accounts:roles_list' %}">Volver</a>{% if user.rol.nombre == 'supervisor' %}<a class="btn" href="{% url 'accounts:rol_permisos_update' rol.pk %}">Asignar permisos</a>{% endif %}</div>
+  <div class="actions"><a class="btn secondary" href="{% url 'accounts:roles_list' %}">Volver</a>{% if user.rol.nombre == 'administrador_desarrollador' %}<a class="btn" href="{% url 'accounts:rol_permisos_update' rol.pk %}">Asignar permisos</a>{% endif %}</div>
 </div>
 <div class="grid cols-3">
   <div class="card stat"><div><span class="small">Nivel</span><div class="metric metric-text">{{ rol.nivel_autoridad|capfirst }}</div></div><div class="icon">NV</div></div>

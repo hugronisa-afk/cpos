@@ -1,0 +1,83 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div>
+    <h2>Modalidad adicional por programa</h2>
+    <p>Artículo científico, proyecto de investigación y examen complexivo permanecen disponibles. Aquí se habilita y define la opción adicional.</p>
+  </div>
+</div>
+
+{% if programas %}
+<form method="get" class="card" style="margin-bottom:18px">
+  <div class="grid cols-2">
+    <div class="field">
+      <label for="programa-selector">Programa</label>
+      <select id="programa-selector" class="form-control" name="programa">
+        {% for programa in programas %}
+          <option value="{{ programa.pk }}" {% if programa_seleccionado.pk == programa.pk %}selected{% endif %}>{{ programa }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>&nbsp;</label><button class="btn secondary" type="submit">Cargar configuración</button></div>
+  </div>
+</form>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h3>{% if form.instance.pk %}Editar{% else %}Configurar{% endif %} “Otra”</h3>
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="alert danger">{{ form.non_field_errors }}</div>{% endif %}
+      {% for field in form %}
+        <div class="field">
+          <label>{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<p class="tiny">{{ field.help_text }}</p>{% endif %}
+          {% if field.errors %}<p class="small" style="color:#b91c1c">{{ field.errors|striptags }}</p>{% endif %}
+        </div>
+      {% endfor %}
+      <button class="btn" type="submit">Guardar configuración</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Reglas fijas del proceso</h3>
+    <ul>
+      <li>La modalidad se elige al crear el proyecto.</li>
+      <li>En borrador u observado puede corregirse directamente.</li>
+      <li>Después de aprobarse, solo cambia mediante solicitud justificada.</li>
+      <li>Se mantienen ocho tutorías y ocho evidencias validadas.</li>
+      <li>El producto final depende de la modalidad elegida.</li>
+    </ul>
+    {% if form.instance.pk %}
+      <p><b>Estado actual:</b> {% if form.instance.esta_activa %}<span class="badge ok">Disponible</span>{% else %}<span class="badge warn">No disponible para nuevos proyectos</span>{% endif %}</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Configuraciones registradas</h3>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Programa</th><th>Nombre</th><th>Producto final</th><th>Estado</th><th>Actualización</th></tr></thead>
+      <tbody>
+        {% for item in configuraciones %}
+          <tr>
+            <td><a href="?programa={{ item.programa_id }}">{{ item.programa }}</a></td>
+            <td>{{ item.nombre }}</td>
+            <td>{{ item.producto_final_nombre }} · {{ item.get_tipo_archivo_final_display }}</td>
+            <td>{% if item.esta_activa %}<span class="badge ok">Disponible</span>{% else %}<span class="badge warn">Inactiva</span>{% endif %}</td>
+            <td>{{ item.fecha_actualizacion|date:"d/m/Y H:i" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5">Aún no se ha configurado una modalidad adicional.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+  <div class="alert warn">No tiene programas activos dentro de su alcance.</div>
+{% endif %}
+{% endblock %}

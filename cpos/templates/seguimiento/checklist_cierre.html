@@ -4,7 +4,7 @@
 <div class="page-head">
   <div>
     <h2>Checklist de cierre</h2>
-    <p>Validación final del proceso de titulación.</p>
+    <p>Validación final para {{ checklist.regla_modalidad.nombre }}.</p>
   </div>
   <a class="btn secondary" href="{% url 'seguimiento:dashboard' %}">Volver</a>
 </div>
@@ -12,7 +12,7 @@
 <div class="grid cols-3">
   <div class="card">
     <h3>Tutorías realizadas</h3>
-    <div class="metric">{{ checklist.progreso_tutorias.realizadas }}/8</div>
+    <div class="metric">{{ checklist.progreso_tutorias.realizadas }}/{{ checklist.regla_modalidad.total_tutorias }}</div>
     <div class="progress">
       <span class="bar
   {% if checklist.progreso_tutorias.porcentaje >= 100 %}w-100
@@ -33,7 +33,7 @@
 
   <div class="card">
     <h3>Evidencias validadas</h3>
-    <div class="metric">{{ checklist.progreso_evidencias.validadas }}/8</div>
+    <div class="metric">{{ checklist.progreso_evidencias.validadas }}/{{ checklist.regla_modalidad.total_evidencias }}</div>
     <div class="progress">
       <span class="bar
   {% if checklist.progreso_evidencias.porcentaje >= 100 %}w-100
@@ -100,6 +100,7 @@
 <div class="card" style="margin-top:18px">
   <h3>Confirmación</h3>
 
+  {% if puede_confirmar %}
   <form method="post">
     {% csrf_token %}
 
@@ -124,5 +125,8 @@
       Confirmar revisión
     </button>
   </form>
+  {% else %}
+    <p class="small">La confirmación final corresponde exclusivamente a coordinación. Esta vista es de consulta.</p>
+  {% endif %}
 </div>
 {% endblock %}

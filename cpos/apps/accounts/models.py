@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import check_password, is_password_usable, make_password
 from django.db import models
 from django.db.models.functions import Now
 from django.utils.crypto import salted_hmac
@@ -61,7 +61,11 @@ class Rol(models.Model):
         verbose_name_plural = "roles"
 
     def __str__(self):
-        return self.nombre
+        return self.nombre_visible
+
+    @property
+    def nombre_visible(self):
+        return self.nombre.replace("_", " ").strip().title()
 
 
 class Permiso(models.Model):
@@ -232,6 +236,12 @@ class UsuarioCPOS(models.Model):
 
     def set_password(self, raw_password):
         self.contrasena_hash = make_password(raw_password)
+
+    def set_unusable_password(self):
+        self.contrasena_hash = make_password(None)
+
+    def has_usable_password(self):
+        return is_password_usable(self.contrasena_hash)
 
     def check_password(self, raw_password):
         return check_password(raw_password, self.contrasena_hash)

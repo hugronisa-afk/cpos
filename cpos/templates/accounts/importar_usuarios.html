@@ -1,0 +1,65 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head">
+  <div>
+    <h2>Importar usuarios</h2>
+    <p>Valida cada fila antes de crear cuentas institucionales.</p>
+  </div>
+  <div class="actions">
+    <a class="btn secondary" href="{% url 'accounts:plantilla_importacion_usuarios' %}">Descargar plantilla CSV</a>
+    {% if resultado %}<a class="btn secondary" href="{% url 'accounts:resultado_importacion_usuarios' %}">Exportar resultado</a>{% endif %}
+  </div>
+</div>
+
+<div class="alert info">
+  Las cuentas importadas quedan sin contraseña utilizable. Después de revisar el resultado, establezca su contraseña desde el detalle del usuario. Las cuentas técnicas no se pueden importar.
+</div>
+
+<div class="card">
+  <h3>Columnas esperadas</h3>
+  <p class="small"><b>Obligatorias:</b> nombres, apellidos, cedula, correo y rol. <b>Opcionales:</b> telefono y estado.</p>
+  <p class="small">Para un maestrante también son obligatorias programa_codigo, cohorte y codigo_matricula. Los roles aceptados son maestrante, tutor, coordinador y supervisor.</p>
+</div>
+
+<form class="card form-card" method="post" enctype="multipart/form-data" novalidate>
+  {% csrf_token %}
+  {% include 'accounts/partials/form_fields.html' %}
+  <div class="form-actions">
+    <button class="btn secondary" type="submit" name="accion" value="validar">Validar sin guardar</button>
+    <button class="btn" type="submit" name="accion" value="importar">Validar e importar filas correctas</button>
+  </div>
+</form>
+
+{% if resultado %}
+  <div class="grid cols-4" style="margin-top:18px">
+    <div class="card"><span class="small">Filas</span><div class="metric">{{ resultado.total }}</div></div>
+    <div class="card"><span class="small">Válidas</span><div class="metric">{{ resultado.validas }}</div></div>
+    <div class="card"><span class="small">Creadas</span><div class="metric">{{ resultado.creadas }}</div></div>
+    <div class="card"><span class="small">Con errores</span><div class="metric">{{ resultado.errores }}</div></div>
+  </div>
+
+  <div class="table-wrap" style="margin-top:18px">
+    <table class="table">
+      <thead><tr><th>Fila</th><th>Persona</th><th>Correo</th><th>Rol</th><th>Usuario generado</th><th>Resultado</th></tr></thead>
+      <tbody>
+        {% for fila in resultado.filas %}
+          <tr>
+            <td>{{ fila.linea }}</td>
+            <td><b>{{ fila.datos.nombres }} {{ fila.datos.apellidos }}</b></td>
+            <td>{{ fila.datos.correo }}</td>
+            <td>{{ fila.datos.rol|capfirst }}</td>
+            <td>{{ fila.nombre_usuario|default:'—' }}</td>
+            <td>
+              {% if fila.estado_resultado == 'creada' %}<span class="badge ok">Creada</span>
+              {% elif fila.valida %}<span class="badge ok">Válida</span>
+              {% else %}<span class="badge danger">Error</span>{% endif %}
+              {% for error in fila.errores %}<div class="tiny">{{ error }}</div>{% endfor %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

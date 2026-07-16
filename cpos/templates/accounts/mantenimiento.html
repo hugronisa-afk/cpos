@@ -1,0 +1,32 @@
+{% extends 'accounts/base_accounts.html' %}
+
+{% block accounts_content %}
+<div class="page-head">
+  <div><h2>Mantenimiento del sistema</h2><p>Diagnóstico técnico sin mostrar credenciales ni datos internos sensibles.</p></div>
+  <a class="btn secondary" href="{% url 'accounts:dashboard' %}">Volver al panel</a>
+</div>
+
+<div class="grid cols-4">
+  <div class="card"><span class="small">Base de datos</span><h3>{% if db_ok %}<span class="badge ok">Disponible</span>{% else %}<span class="badge danger">No disponible</span>{% endif %}</h3><p class="tiny">Esquema: {{ esquema }}</p></div>
+  <div class="card"><span class="small">Usuarios</span><div class="metric">{{ usuarios }}</div><p class="tiny">{{ cuentas_tecnicas }}/3 cuentas técnicas activas</p></div>
+  <div class="card"><span class="small">Catálogos</span><div class="metric">{{ programas }}</div><p class="tiny">Programas · {{ cohortes }} cohortes</p></div>
+  <div class="card"><span class="small">Sesiones expiradas</span><div class="metric">{{ sesiones_expiradas }}</div></div>
+</div>
+
+<div class="grid cols-2" style="margin-top:18px">
+  <div class="card">
+    <h3>Configuración de seguridad</h3>
+    <dl class="detail-list compact">
+      <div><dt>Modo DEBUG</dt><dd>{% if debug %}<span class="badge warn">Activo</span>{% else %}<span class="badge ok">Desactivado</span>{% endif %}</dd></div>
+      <div><dt>Cookie segura</dt><dd>{% if cookie_segura %}<span class="badge ok">Exigida</span>{% else %}<span class="badge warn">Solo desarrollo</span>{% endif %}</dd></div>
+    </dl>
+  </div>
+  <div class="card">
+    <h3>Mantenimiento permitido</h3>
+    <p class="small">Esta operación elimina únicamente sesiones cuya fecha de expiración ya pasó. No desconecta sesiones vigentes.</p>
+    {% if puede_ejecutar %}
+      <form method="post">{% csrf_token %}<button class="btn" type="submit" name="accion" value="limpiar_sesiones_expiradas">Limpiar sesiones expiradas</button></form>
+    {% else %}<span class="badge warn">Solo consulta</span>{% endif %}
+  </div>
+</div>
+{% endblock %}

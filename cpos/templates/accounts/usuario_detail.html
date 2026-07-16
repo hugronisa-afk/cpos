@@ -3,7 +3,7 @@
 {% block accounts_content %}
 <div class="page-head">
   <div><h2>{{ usuario_cpos.nombre_completo }}</h2><p>Cuenta institucional {{ usuario_cpos.nombre_usuario }}.</p></div>
-  <div class="actions"><a class="btn secondary" href="{% url 'accounts:usuarios' %}">Volver</a><a class="btn" href="{% url 'accounts:usuario_update' usuario_cpos.pk %}">Editar</a></div>
+  <div class="actions"><a class="btn secondary" href="{% url 'accounts:usuarios' %}">Volver</a>{% if puede_administrar %}<a class="btn" href="{% url 'accounts:usuario_update' usuario_cpos.pk %}">Editar</a>{% endif %}</div>
 </div>
 
 <div class="grid cols-2">
@@ -14,7 +14,7 @@
       <div><dt>Cédula</dt><dd>{{ usuario_cpos.cedula }}</dd></div>
       <div><dt>Correo</dt><dd>{{ usuario_cpos.correo }}</dd></div>
       <div><dt>Teléfono</dt><dd>{{ usuario_cpos.telefono|default:'No registrado' }}</dd></div>
-      <div><dt>Rol</dt><dd><span class="badge">{{ usuario_cpos.rol.nombre|capfirst }}</span></dd></div>
+      <div><dt>Rol</dt><dd><span class="badge">{{ usuario_cpos.rol.nombre_visible }}</span></dd></div>
       <div><dt>Estado</dt><dd>{% if usuario_cpos.estado == 'activo' %}<span class="badge ok">Activo</span>{% elif usuario_cpos.estado == 'bloqueado' %}<span class="badge danger">Bloqueado</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</dd></div>
       <div><dt>Último acceso</dt><dd>{{ usuario_cpos.last_login|date:'d/m/Y H:i'|default:'Sin acceso registrado' }}</dd></div>
       <div><dt>Creación</dt><dd>{{ usuario_cpos.fecha_creacion|date:'d/m/Y H:i' }}</dd></div>
@@ -26,7 +26,7 @@
   </div>
 </div>
 
-<div class="card danger-zone">
+{% if puede_administrar %}<div class="card danger-zone">
   <h3>Seguridad y estado</h3>
   <div class="actions">
     <a class="btn secondary" href="{% url 'accounts:usuario_cambiar_password' usuario_cpos.pk %}">Cambiar contraseña</a>
@@ -40,4 +40,5 @@
     {% endif %}
   </div>
 </div>
+{% elif usuario_cpos.rol.nombre == 'administrador_desarrollador' %}<div class="alert info">Esta cuenta técnica está protegida y solo puede ser administrada por otra cuenta técnica.</div>{% endif %}
 {% endblock %}

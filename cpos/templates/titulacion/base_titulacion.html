@@ -10,14 +10,21 @@
 
 {% block accounts_content %}
   <nav class="titulacion-nav" aria-label="Navegación del módulo de titulación">
+    {% if user.rol.nombre != 'administrador_desarrollador' %}
     <a class="{% if active_page == 'titulacion_dashboard' %}active{% endif %}" href="{% url 'titulacion:dashboard' %}">Resumen</a>
     <a class="{% if active_page == 'expediente' %}active{% endif %}" href="{% url 'titulacion:expediente' %}">Expedientes</a>
     <a class="{% if active_page == 'proyecto' %}active{% endif %}" href="{% url 'titulacion:proyecto' %}">Proyectos</a>
+    <a class="{% if active_page == 'calendario_tutorias' %}active{% endif %}" href="{% url 'titulacion:calendario_tutorias' %}">Calendario</a>
     {% if user.rol.nombre == 'coordinador' or user.rol.nombre == 'supervisor' %}
       <a class="{% if active_page == 'tutores' %}active{% endif %}" href="{% url 'titulacion:tutores_list' %}">Tutores</a>
     {% endif %}
+    {% if user.rol.nombre == 'tutor' %}<a class="{% if active_page == 'tutores' %}active{% endif %}" href="{% url 'titulacion:tutor_detail' user.perfil_tutor.pk %}">Mi disponibilidad</a>{% endif %}
     <a class="{% if active_page == 'articulo' %}active{% endif %}" href="{% url 'titulacion:articulo' %}">Artículos</a>
     <a class="{% if active_page == 'aprobaciones' %}active{% endif %}" href="{% url 'titulacion:aprobaciones' %}">Aprobaciones</a>
+    {% endif %}
+    {% if user.rol.nombre == 'coordinador' or user.rol.nombre == 'administrador_desarrollador' %}
+      <a class="{% if active_page == 'modalidades_configuracion' %}active{% endif %}" href="{% url 'titulacion:modalidades_configuracion' %}">Modalidades</a>
+    {% endif %}
   </nav>
   {% block titulacion_content %}{% endblock %}
   {% block titulacion_modals %}{% endblock %}

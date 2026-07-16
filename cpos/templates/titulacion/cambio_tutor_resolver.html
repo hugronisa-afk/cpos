@@ -1,0 +1,23 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><h2>Resolver cambio de tutor</h2><p>{{ solicitud.proyecto.tema }}</p></div>
+  <a class="btn secondary" href="{% url 'titulacion:proyecto_detail' solicitud.proyecto.pk %}">Volver</a>
+</div>
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Solicitud</h3>
+    <p><b>Actual:</b> {{ solicitud.asignacion_actual.tutor.usuario.nombre_completo }}</p>
+    <p><b>Propuesto:</b> {{ solicitud.tutor_propuesto.usuario.nombre_completo }}</p>
+    <p><b>Solicitante:</b> {{ solicitud.solicitado_por.nombre_completo|default:'Cuenta no disponible' }}</p>
+    <p><b>Motivo:</b> {{ solicitud.motivo }}</p>
+    <p class="small">Al aprobar, las tutorías futuras no realizadas se trasladarán al nuevo tutor; las históricas conservarán su responsable.</p>
+  </div>
+  <form class="card form-card" method="post" novalidate>
+    {% csrf_token %}
+    {% include 'accounts/partials/form_fields.html' %}
+    <div class="form-actions"><button class="btn" type="submit">Registrar decisión</button></div>
+  </form>
+</div>
+{% endblock %}

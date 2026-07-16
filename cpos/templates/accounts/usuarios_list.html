@@ -3,8 +3,17 @@
 {% block accounts_content %}
 <div class="page-head">
   <div><h2>Usuarios institucionales</h2><p>Consulta y administra únicamente las cuentas autorizadas para tu rol.</p></div>
-  <a class="btn" href="{% url 'accounts:usuario_create' %}">Crear usuario</a>
+  <div class="actions">
+    {% if user.rol.nombre == 'administrador_desarrollador' %}<a class="btn secondary" href="{% url 'accounts:importar_usuarios' %}">Importar</a>{% endif %}
+    <a class="btn" href="{% url 'accounts:usuario_create' %}">Crear usuario</a>
+  </div>
 </div>
+
+{% if puede_bootstrap_tecnico %}
+  <div class="alert info">Todavía no existe una cuenta técnica. Como supervisor puede crear únicamente la primera seleccionando el rol “Administrador Desarrollador”; esa cuenta podrá crear las otras dos.</div>
+{% elif user.rol.nombre == 'administrador_desarrollador' %}
+  <div class="alert info">Cuentas técnicas activas: <b>{{ cuentas_tecnicas }}/3</b>. Para reemplazar una, primero inactive la cuenta anterior.</div>
+{% endif %}
 
 <form class="card filter-bar" method="get">
   <div class="field"><label for="q">Buscar</label><input id="q" name="q" value="{{ busqueda }}" placeholder="Nombre, usuario o correo"></div>
@@ -22,7 +31,7 @@
           <td><b>{{ usuario_cpos.nombre_completo }}</b><div class="tiny">{{ usuario_cpos.nombre_usuario }}</div></td>
           <td>{{ usuario_cpos.cedula }}</td>
           <td>{{ usuario_cpos.correo }}</td>
-          <td><span class="badge">{{ usuario_cpos.rol.nombre|capfirst }}</span></td>
+          <td><span class="badge">{{ usuario_cpos.rol.nombre_visible }}</span></td>
           <td>{% if usuario_cpos.estado == 'activo' %}<span class="badge ok">Activo</span>{% elif usuario_cpos.estado == 'bloqueado' %}<span class="badge danger">Bloqueado</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</td>
           <td><div class="actions"><a class="btn secondary smallbtn" href="{% url 'accounts:usuario_detail' usuario_cpos.pk %}">Ver</a><a class="btn secondary smallbtn" href="{% url 'accounts:usuario_update' usuario_cpos.pk %}">Editar</a></div></td>
         </tr>

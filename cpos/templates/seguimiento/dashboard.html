@@ -13,7 +13,7 @@
   <div class="card stat">
     <div>
       <span class="small">Tutorías realizadas</span>
-      <div class="metric">{{ progreso_tutorias.realizadas }}/8</div>
+      <div class="metric">{{ progreso_tutorias.realizadas }}/{{ regla_modalidad.total_tutorias|default:8 }}</div>
       <div class="progress">
         <span class="bar
   {% if progreso_tutorias.porcentaje >= 100 %}w-100
@@ -37,7 +37,7 @@
   <div class="card stat">
     <div>
       <span class="small">Evidencias validadas</span>
-      <div class="metric">{{ progreso_evidencias.validadas }}/8</div>
+      <div class="metric">{{ progreso_evidencias.validadas }}/{{ regla_modalidad.total_evidencias|default:8 }}</div>
       <div class="progress">
         <span class="bar
   {% if progreso_evidencias.porcentaje >= 100 %}w-100
@@ -60,7 +60,8 @@
 
   <div class="card stat">
     <div>
-      <span class="small">Artículo científico</span>
+      <span class="small">{{ regla_modalidad.nombre|default:'Producto final' }}</span>
+      {% if regla_modalidad.requiere_articulo %}
       <div class="metric">{{ avance_articulo.porcentaje }}%</div>
       <div class="progress">
         <span class="bar
@@ -78,6 +79,9 @@
   {% endif %}
 "></span>
       </div>
+      {% else %}
+        {% if producto_final.cumplido %}<div class="metric">Listo</div><span class="badge ok">Archivo aprobado</span>{% else %}<div class="metric">Pendiente</div><span class="badge warn">{{ regla_modalidad.producto_final_nombre }}</span>{% endif %}
+      {% endif %}
     </div>
     <div class="icon">AR</div>
   </div>
@@ -102,14 +106,14 @@
     <h3>Proyecto actual</h3>
 
     {% if proyecto %}
-      <p><b>Tema:</b> {{ proyecto.titulo|default:"Sin título registrado" }}</p>
-      <p><b>Modalidad:</b> {{ proyecto.modalidad|default:"No registrada" }}</p>
+      <p><b>Tema:</b> {{ proyecto.tema|default:"Sin título registrado" }}</p>
+      <p><b>Modalidad:</b> {{ regla_modalidad.nombre|default:"No registrada" }}</p>
       <p><b>Estado:</b> <span class="badge">{{ proyecto.estado|default:"Sin estado" }}</span></p>
 
       <div class="pill-row" style="margin-top:12px">
         <a class="btn secondary smallbtn" href="{% url 'seguimiento:tutorias' %}">Tutorías</a>
         <a class="btn secondary smallbtn" href="{% url 'seguimiento:evidencias' %}">Evidencias</a>
-        <a class="btn secondary smallbtn" href="{% url 'seguimiento:articulo' proyecto.id %}">Artículo</a>
+        {% if regla_modalidad.requiere_articulo %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:articulo' proyecto.id %}">Artículo</a>{% endif %}
         <a class="btn secondary smallbtn" href="{% url 'seguimiento:checklist_cierre' proyecto.id %}">Checklist</a>
       </div>
     {% else %}
@@ -156,9 +160,9 @@
           <tbody>
             {% for tutoria in tutorias_pendientes %}
               <tr>
-                <td>{{ tutoria.numero|default:tutoria.id }}</td>
+                <td>{{ tutoria.numero_tutoria|default:tutoria.id }}</td>
                 <td>{{ tutoria.fecha|date:"d/m/Y"|default:"Sin fecha" }}</td>
-                <td>{{ tutoria.tema|default:"Sin tema" }}</td>
+                <td>{{ tutoria.proyecto.tema|default:"Sin tema" }}</td>
                 <td><span class="badge warn">{{ tutoria.estado }}</span></td>
                 <td>
                   <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_tutoria' tutoria.id %}">Ver</a>
@@ -181,7 +185,7 @@
         {% for evidencia in evidencias_observadas %}
           <div class="item">
             <h4>{{ evidencia.titulo|default:"Evidencia observada" }}</h4>
-            <p>{{ evidencia.tipo_avance }} · {{ evidencia.fecha_carga|date:"d/m/Y" }}</p>
+            <p>{{ evidencia.tipo_avance }} · {{ evidencia.fecha_creacion|date:"d/m/Y" }}</p>
             <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_evidencia' evidencia.id %}">Revisar</a>
           </div>
         {% endfor %}

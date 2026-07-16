@@ -14,18 +14,19 @@
 
 <div class="table-wrap">
   <table class="table">
-    <thead><tr><th>Tutor</th><th>Datos académicos</th><th>Contacto</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <thead><tr><th>Tutor</th><th>Datos académicos</th><th>Programas y carga</th><th>Contacto</th><th>Estado</th><th>Acciones</th></tr></thead>
     <tbody>
       {% for tutor in pagina %}
         <tr>
           <td><b>{{ tutor.usuario.nombre_completo }}</b><div class="tiny">{{ tutor.usuario.nombre_usuario }}</div></td>
           <td>{{ tutor.titulo_academico|default:'Sin título registrado' }}<div class="tiny">{{ tutor.especialidad|default:'Sin especialidad' }}</div>{% if tutor.linea_investigacion %}<div class="tiny">{{ tutor.linea_investigacion }}</div>{% endif %}</td>
+          <td>{% for vinculo in tutor.vinculos_programa.all %}{% if vinculo.esta_activo %}<div>{{ vinculo.programa.codigo }} · cupo {{ vinculo.cupo_maximo }}</div>{% endif %}{% empty %}<span class="badge danger">Sin programa</span>{% endfor %}<div class="tiny">{{ tutor.carga_activa }} asignaciones activas</div></td>
           <td>{{ tutor.usuario.correo }}{% if tutor.usuario.telefono %}<div class="tiny">{{ tutor.usuario.telefono }}</div>{% endif %}</td>
           <td>{% if tutor.estado == 'disponible' %}<span class="badge ok">Disponible</span>{% elif tutor.estado == 'no_disponible' %}<span class="badge warn">No disponible</span>{% else %}<span class="badge danger">Inactivo</span>{% endif %}</td>
           <td><div class="actions"><a class="btn secondary smallbtn" href="{% url 'titulacion:tutor_detail' tutor.pk %}">Ver</a>{% if puede_editar %}<a class="btn secondary smallbtn" href="{% url 'titulacion:tutor_update' tutor.pk %}">Editar</a>{% endif %}</div></td>
         </tr>
       {% empty %}
-        <tr><td colspan="5"><div class="empty-state">No se encontraron tutores.</div></td></tr>
+        <tr><td colspan="6"><div class="empty-state">No se encontraron tutores.</div></td></tr>
       {% endfor %}
     </tbody>
   </table>
