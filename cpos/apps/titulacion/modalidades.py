@@ -2,6 +2,8 @@
 
 from copy import deepcopy
 
+from django.db import DatabaseError, ProgrammingError
+
 from .models import ConfiguracionModalidadPrograma, ModalidadProyecto, TipoArchivo
 
 
@@ -87,6 +89,37 @@ REGLAS_BASE = {
 }
 
 
+def _modalidad_configurada_activa(programa, modalidad):
+    """Busca la fila BD (Fase 7) de una modalidad base semilla.
+
+    Devuelve None si la tabla `modalidades_configuradas` todavía no existe
+    (SQL 15 no aplicado) o si no hay fila configurada — en ambos casos el
+    llamador debe usar `REGLAS_BASE` como respaldo, preservando el
+    comportamiento previo a la Fase 7.
+    """
+    try:
+        from .models import ModalidadConfigurada
+
+        consulta = ModalidadConfigurada.objects.filter(
+            tipo_modalidad=modalidad,
+            es_semilla_base=True,
+        ).filter(models_q_programa_o_global(programa))
+        return consulta.order_by("programa_id").first()
+    except (DatabaseError, ProgrammingError):
+        return None
+    except Exception:
+        # La tabla puede no existir todavía; nunca debe romper el flujo.
+        return None
+
+
+def models_q_programa_o_global(programa):
+    from django.db.models import Q
+
+    if programa is None:
+        return Q(programa__isnull=True)
+    return Q(programa__isnull=True) | Q(programa=programa)
+
+
 def _configuracion_otra(programa, *, incluir_inactiva=False):
     if not programa:
         return None
@@ -99,6 +132,15 @@ def _configuracion_otra(programa, *, incluir_inactiva=False):
 def obtener_regla_modalidad(programa, modalidad):
     if modalidad in REGLAS_BASE:
         regla = deepcopy(REGLAS_BASE[modalidad])
+        configurada = _modalidad_configurada_activa(programa, modalidad)
+        if configurada is not None:
+            # BD (Fase 7) manda sobre el texto hardcodeado; las banderas de
+            # negocio (requiere_articulo, total_tutorias, etc.) permanecen
+            # fijas por tipo de modalidad.
+            regla["nombre"] = configurada.nombre
+            regla["descripcion"] = configurada.descripcion or regla["descripcion"]
+            regla["esta_disponible"] = configurada.esta_activa
+            regla["modalidad_configurada_id"] = configurada.id
     elif modalidad == ModalidadProyecto.OTRA:
         configuracion = _configuracion_otra(programa, incluir_inactiva=True)
         if not configuracion:

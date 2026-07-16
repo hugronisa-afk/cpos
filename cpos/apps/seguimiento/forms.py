@@ -25,33 +25,60 @@ class AsistenciaTutoriaForm(BaseStyledForm, forms.Form):
         required=False,
         label="Asistió el maestrante",
     )
-    estado_tutoria = forms.ChoiceField(
-        label="Estado de la tutoría",
-        choices=(
-            (EstadoTutoria.REALIZADA, "Realizada"),
-            (EstadoTutoria.NO_REALIZADA, "No realizada"),
-            (EstadoTutoria.CANCELADA, "Cancelada"),
-        ),
-    )
+    estado_tutoria = forms.ChoiceField(label="Estado de la tutoría", choices=())
     observaciones = forms.CharField(
         required=False,
         label="Observaciones",
         widget=forms.Textarea(attrs={"rows": 4}),
     )
+    motivo_correccion = forms.CharField(
+        required=False,
+        label="Motivo de la corrección",
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
 
     def __init__(self, *args, **kwargs):
+        self.es_correccion = kwargs.pop("es_correccion", False)
+        self.permite_cancelar = kwargs.pop("permite_cancelar", False)
+        self.solo_cancelar = kwargs.pop("solo_cancelar", False)
         super().__init__(*args, **kwargs)
+        opciones = [] if self.solo_cancelar else [
+            (EstadoTutoria.REALIZADA, "Realizada"),
+            (EstadoTutoria.NO_REALIZADA, "No realizada"),
+        ]
+        if self.permite_cancelar or self.solo_cancelar:
+            opciones.append((EstadoTutoria.CANCELADA, "Cancelada"))
+        self.fields["estado_tutoria"].choices = opciones
+        if self.es_correccion:
+            self.fields["motivo_correccion"].required = True
+        else:
+            self.fields.pop("motivo_correccion")
         self.aplicar_estilos()
 
     def clean(self):
         datos = super().clean()
-        if (
-            datos.get("estado_tutoria") == EstadoTutoria.REALIZADA
-            and not datos.get("asistio_tutor")
-            and not datos.get("asistio_maestrante")
+        estado = datos.get("estado_tutoria")
+        asistio_tutor = bool(datos.get("asistio_tutor"))
+        asistio_maestrante = bool(datos.get("asistio_maestrante"))
+        if estado == EstadoTutoria.REALIZADA and not (
+            asistio_tutor and asistio_maestrante
         ):
             raise ValidationError(
-                "No puede marcar la tutoría como realizada si no asistió ningún participante."
+                "La tutoría realizada requiere asistencia del tutor y del maestrante."
+            )
+        if estado == EstadoTutoria.NO_REALIZADA and (
+            asistio_tutor and asistio_maestrante
+        ):
+            raise ValidationError(
+                "Si ambos participantes asistieron, la tutoría no puede quedar no realizada."
+            )
+        if estado in {
+            EstadoTutoria.NO_REALIZADA,
+            EstadoTutoria.CANCELADA,
+        } and not str(datos.get("observaciones") or "").strip():
+            self.add_error(
+                "observaciones",
+                "Explique por qué la sesión no se realizó.",
             )
         return datos
 

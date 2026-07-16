@@ -36,6 +36,7 @@ TIPO_EVIDENCIA_CHOICES = (
 
 ESTADO_EVIDENCIA_CHOICES = (
     ("pendiente", "Pendiente"),
+    ("cargada", "Cargada"),
     ("en_revision", "En revisión"),
     ("validada", "Validada"),
     ("observada", "Observada"),
@@ -133,7 +134,13 @@ class EvidenciaVersion(models.Model):
         null=True,
         related_name="versiones_evidencia_subidas",
     )
+    estado = models.CharField(
+        max_length=30,
+        choices=ESTADO_EVIDENCIA_CHOICES,
+        db_default="en_revision",
+    )
     fecha_creacion = models.DateTimeField(db_default=Now(), editable=False)
+    fecha_actualizacion = models.DateTimeField(db_default=Now())
 
     class Meta:
         managed = False
@@ -159,6 +166,12 @@ class ValidacionEvidencia(models.Model):
         on_delete=models.PROTECT,
         db_column="evidencia_id",
         related_name="validaciones",
+    )
+    evidencia_version = models.OneToOneField(
+        EvidenciaVersion,
+        on_delete=models.PROTECT,
+        db_column="evidencia_version_id",
+        related_name="validacion",
     )
     validado_por = models.ForeignKey(
         UsuarioCPOS,
@@ -222,6 +235,7 @@ from apps.titulacion.models import (  # noqa: E402,F401
     Articulo,
     AsignacionTutor,
     AsistenciaTutoria,
+    AsistenciaTutoriaHistorial,
     Grabacion,
     ReprogramacionTutoria,
     SolicitudCambioTema,

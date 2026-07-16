@@ -4,9 +4,10 @@
 {% block title %}CPOS UTB | Seguimiento{% endblock %}
 
 {% block body %}
-<div class="app-shell">
+<a class="skip-link" href="#contenido-principal">Saltar al contenido</a>
+<div class="app">
   <aside class="sidebar">
-    <a class="brand" href="{% url 'seguimiento:dashboard' %}">
+    <a class="side-brand" href="{% url 'seguimiento:dashboard' %}">
       <img class="logo dark" src="{% static 'img/logo-utb.png' %}" alt="Logo UTB">
       <div class="brand-title">
         CPOS Titulación
@@ -15,26 +16,29 @@
     </a>
 
     <nav class="side-menu">
-      <a href="{% url 'seguimiento:dashboard' %}">Dashboard</a>
-      <a href="{% url 'seguimiento:tutorias' %}">Tutorías</a>
-      <a href="{% url 'seguimiento:evidencias' %}">Evidencias</a>
-      <a href="{% url 'seguimiento:reportes' %}">Reportes</a>
-      <a href="{% url 'seguimiento:notificaciones' %}">Notificaciones</a>
+      <a class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'seguimiento:dashboard' %}"><span>▸</span>Dashboard</a>
+      <a class="{% if request.resolver_match.url_name == 'tutorias' or request.resolver_match.url_name == 'detalle_tutoria' or request.resolver_match.url_name == 'editar_tutoria' %}active{% endif %}" href="{% url 'seguimiento:tutorias' %}"><span>▸</span>Tutorías</a>
+      <a class="{% if 'evidencia' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'seguimiento:evidencias' %}"><span>▸</span>Evidencias</a>
+      {% if user.rol.nombre == 'maestrante' and user.perfil_maestrante.proyectos_titulacion.first %}
+        <a class="{% if 'entrega' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'seguimiento:entregas_etapa' user.perfil_maestrante.proyectos_titulacion.first.pk %}"><span>▸</span>Producto final</a>
+      {% endif %}
+      <a class="{% if request.resolver_match.url_name == 'reportes' %}active{% endif %}" href="{% url 'seguimiento:reportes' %}"><span>▸</span>Reportes</a>
+      <a class="{% if request.resolver_match.url_name == 'notificaciones' %}active{% endif %}" href="{% url 'seguimiento:notificaciones' %}"><span>▸</span>Notificaciones</a>
     </nav>
   </aside>
 
-  <main class="main-content">
-    {% if messages %}
-      <div style="margin-bottom:16px">
-        {% for message in messages %}
-          <div class="badge {% if message.tags == 'success' %}ok{% elif message.tags == 'error' %}danger{% else %}warn{% endif %}">
-            {{ message }}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+  <main class="main" id="contenido-principal">
+    <div class="content content-stack">
+      {% if messages %}
+        <div class="message-list" role="status" aria-live="polite">
+          {% for message in messages %}
+            <div class="alert {{ message.tags|default:'info' }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
 
-    {% block content %}{% endblock %}
+      {% block content %}{% endblock %}
+    </div>
   </main>
 </div>
 

@@ -10,6 +10,9 @@
 
 {% block accounts_content %}
   <nav class="titulacion-nav" aria-label="Navegación del módulo de titulación">
+    {% if user.rol.nombre == 'maestrante' %}
+      <a class="{% if active_page == 'onboarding' %}active{% endif %}" href="{% url 'titulacion:onboarding_gate' %}">Onboarding</a>
+    {% endif %}
     {% if user.rol.nombre != 'administrador_desarrollador' %}
     <a class="{% if active_page == 'titulacion_dashboard' %}active{% endif %}" href="{% url 'titulacion:dashboard' %}">Resumen</a>
     <a class="{% if active_page == 'expediente' %}active{% endif %}" href="{% url 'titulacion:expediente' %}">Expedientes</a>
@@ -20,10 +23,14 @@
     {% endif %}
     {% if user.rol.nombre == 'tutor' %}<a class="{% if active_page == 'tutores' %}active{% endif %}" href="{% url 'titulacion:tutor_detail' user.perfil_tutor.pk %}">Mi disponibilidad</a>{% endif %}
     <a class="{% if active_page == 'articulo' %}active{% endif %}" href="{% url 'titulacion:articulo' %}">Artículos</a>
+    <a class="{% if active_page == 'examenes_complexivos' %}active{% endif %}" href="{% url 'titulacion:examenes_complexivos_list' %}">Examen complexivo</a>
     <a class="{% if active_page == 'aprobaciones' %}active{% endif %}" href="{% url 'titulacion:aprobaciones' %}">Aprobaciones</a>
     {% endif %}
     {% if user.rol.nombre == 'coordinador' or user.rol.nombre == 'administrador_desarrollador' %}
-      <a class="{% if active_page == 'modalidades_configuracion' %}active{% endif %}" href="{% url 'titulacion:modalidades_configuracion' %}">Modalidades</a>
+      <a class="{% if active_page == 'modalidades_configuracion' %}active{% endif %}" href="{% url 'titulacion:modalidades_configuracion' %}">Modalidad "Otra"</a>
+    {% endif %}
+    {% if user.rol.nombre == 'supervisor' or user.rol.nombre == 'coordinador' or user.rol.nombre == 'administrador_desarrollador' %}
+      <a class="{% if active_page == 'modalidades_configuradas' %}active{% endif %}" href="{% url 'titulacion:modalidades_configuradas_list' %}">Modalidades y etapas</a>
     {% endif %}
   </nav>
   {% block titulacion_content %}{% endblock %}

@@ -10,6 +10,13 @@
 </div>
 
 <div class="card">
+  {% if es_cancelacion %}
+    <p class="badge warn">La cancelación exige una explicación y quedará registrada en la bitácora.</p>
+  {% elif es_correccion %}
+    <p class="badge warn">La corrección exige motivo y quedará registrada en el historial y la bitácora.</p>
+  {% elif es_reemplazo %}
+    <p class="badge warn">Se creará una nueva versión; la grabación anterior seguirá disponible en el historial autorizado.</p>
+  {% endif %}
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
 
@@ -30,7 +37,7 @@
       </div>
     {% endfor %}
 
-    <button class="btn" type="submit">Guardar</button>
+    <button class="btn" type="submit">{% if es_cancelacion %}Confirmar cancelación{% elif es_correccion %}Guardar corrección{% elif es_reemplazo %}Crear nueva versión{% else %}Guardar{% endif %}</button>
   </form>
 </div>
 {% endblock %}

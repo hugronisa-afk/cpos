@@ -80,7 +80,11 @@
 {% endif %}
 
 <div class="card" style="margin-top:18px">
-  <div class="page-head"><div><h3>Tutorías · {{ total_tutorias }}/8</h3><p>Solo se permiten ocho sesiones numeradas, dentro de la disponibilidad y sin cruces.</p></div>{% if puede_programar and total_tutorias < 8 %}<a class="btn" href="{% url 'titulacion:tutoria_create' proyecto.pk %}">Programar siguiente</a>{% endif %}</div>
+  <div class="page-head"><div><h3>Tutorías · {{ total_tutorias }}/{{ limite_tutorias }}</h3><p>Se permiten ocho sesiones numeradas; una novena solo es posible con autorización excepcional de coordinación.</p></div>
+    {% if puede_programar and total_tutorias < limite_tutorias %}<a class="btn" href="{% url 'titulacion:tutoria_create' proyecto.pk %}">Programar siguiente</a>{% endif %}
+    {% if puede_autorizar_novena %}<a class="btn secondary" href="{% url 'titulacion:novena_tutoria_autorizar' proyecto.pk %}">Autorizar novena tutoría</a>{% endif %}
+  </div>
+  {% if tiene_novena_autorizada %}<div class="alert ok">Novena tutoría autorizada excepcionalmente para este proyecto.</div>{% endif %}
   {% if tutorias_vencidas %}<div class="alert warn">Existen {{ tutorias_vencidas }} tutorías con fecha vencida que aún figuran como programadas. Coordinación o el tutor deben registrar su resultado; el sistema no modifica automáticamente el historial académico.</div>{% endif %}
   <div class="table-wrap"><table class="table">
     <thead><tr><th>N.º</th><th>Fecha</th><th>Tutor</th><th>Estado</th><th>Acciones</th></tr></thead>

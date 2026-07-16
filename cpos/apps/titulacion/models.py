@@ -139,6 +139,30 @@ class EstadoPasoAprobacion(models.TextChoices):
     RECHAZADO = "rechazado", "Rechazado"
 
 
+class EstadoOnboarding(models.TextChoices):
+    PENDIENTE = "pendiente", "Pendiente"
+    EN_SELECCION = "en_seleccion", "En selección"
+    COMPLETADO = "completado", "Completado"
+    BLOQUEADO = "bloqueado", "Bloqueado"
+    REQUIERE_CORRECCION = "requiere_correccion", "Requiere corrección"
+
+
+class EstadoEtapaProducto(models.TextChoices):
+    BORRADOR = "borrador", "Borrador"
+    ENVIADA = "enviada", "Enviada"
+    EN_REVISION = "en_revision", "En revisión"
+    OBSERVADA = "observada", "Observada"
+    APROBADA = "aprobada", "Aprobada"
+    RECHAZADA = "rechazada", "Rechazada"
+
+
+class ResultadoExamenComplexivo(models.TextChoices):
+    PENDIENTE = "pendiente", "Pendiente"
+    APROBADO = "aprobado", "Aprobado"
+    REPROBADO = "reprobado", "Reprobado"
+    NO_SE_PRESENTO = "no_se_presento", "No se presentó"
+
+
 class TipoDocumentoAprobacion(models.TextChoices):
     WORD = "word", "Documento editable Word"
     PDF = "pdf", "Documento PDF"
@@ -489,6 +513,10 @@ class Tutoria(ActualizacionMixin):
         null=True,
         related_name="tutorias_programadas",
     )
+    es_excepcional = models.BooleanField(
+        db_default=False,
+        help_text="Marca la novena tutoría autorizada excepcionalmente (ver AutorizacionNovenaTutoria).",
+    )
 
     class Meta:
         managed = False
@@ -504,8 +532,28 @@ class Tutoria(ActualizacionMixin):
     def clean(self):
         if self.hora_inicio and self.hora_fin and self.hora_fin <= self.hora_inicio:
             raise ValidationError({"hora_fin": "Debe ser posterior a la hora de inicio."})
-        if self.numero_tutoria and not 1 <= self.numero_tutoria <= 8:
-            raise ValidationError({"numero_tutoria": "Debe estar entre 1 y 8."})
+        if self.numero_tutoria and not 1 <= self.numero_tutoria <= 9:
+            raise ValidationError({"numero_tutoria": "Debe estar entre 1 y 9."})
+        if self.numero_tutoria == 9:
+            tiene_autorizacion = self._tiene_autorizacion_novena()
+            if not tiene_autorizacion:
+                raise ValidationError(
+                    {
+                        "numero_tutoria": (
+                            "La novena tutoría requiere una AutorizacionNovenaTutoria "
+                            "registrada previamente para el proyecto."
+                        )
+                    }
+                )
+            self.es_excepcional = True
+
+    def _tiene_autorizacion_novena(self):
+        if not self.proyecto_id:
+            return False
+        consulta = AutorizacionNovenaTutoria.objects.filter(proyecto_id=self.proyecto_id).filter(
+            models.Q(tutoria__isnull=True) | models.Q(tutoria_id=self.pk)
+        )
+        return consulta.exists()
 
 
 class AsistenciaTutoria(ActualizacionMixin):
@@ -531,6 +579,45 @@ class AsistenciaTutoria(ActualizacionMixin):
     class Meta:
         managed = False
         db_table = "asistencias_tutoria"
+
+
+class AsistenciaTutoriaHistorial(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    asistencia = models.ForeignKey(
+        AsistenciaTutoria,
+        on_delete=models.PROTECT,
+        db_column="asistencia_id",
+        related_name="historial_correcciones",
+    )
+    tutoria = models.ForeignKey(
+        Tutoria,
+        on_delete=models.PROTECT,
+        db_column="tutoria_id",
+        related_name="historial_asistencia",
+    )
+    asistio_tutor_anterior = models.BooleanField()
+    asistio_maestrante_anterior = models.BooleanField()
+    estado_tutoria_anterior = models.CharField(max_length=30, choices=EstadoTutoria.choices)
+    asistio_tutor_nuevo = models.BooleanField()
+    asistio_maestrante_nuevo = models.BooleanField()
+    estado_tutoria_nuevo = models.CharField(max_length=30, choices=EstadoTutoria.choices)
+    observaciones_anteriores = models.TextField(blank=True, null=True)
+    observaciones_nuevas = models.TextField(blank=True, null=True)
+    motivo_correccion = models.TextField()
+    corregido_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="corregido_por_id",
+        blank=True,
+        null=True,
+        related_name="correcciones_asistencia_realizadas",
+    )
+    fecha_creacion = models.DateTimeField(db_default=Now(), editable=False)
+
+    class Meta:
+        managed = False
+        db_table = "asistencias_tutoria_historial"
+        ordering = ("-fecha_creacion", "-id")
 
 
 class ReprogramacionTutoria(ActualizacionMixin):
@@ -624,6 +711,16 @@ class Grabacion(models.Model):
     nombre_original = models.CharField(max_length=255, blank=True, null=True)
     extension = models.CharField(max_length=10, blank=True, null=True)
     tamano_bytes = models.BigIntegerField(blank=True, null=True)
+    numero_version = models.PositiveIntegerField(db_default=1)
+    esta_activa = models.BooleanField(db_default=True)
+    reemplaza_grabacion = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        db_column="reemplaza_grabacion_id",
+        blank=True,
+        null=True,
+        related_name="reemplazos",
+    )
     registrado_por = models.ForeignKey(
         UsuarioCPOS,
         on_delete=models.SET_NULL,
@@ -633,15 +730,26 @@ class Grabacion(models.Model):
         related_name="grabaciones_registradas",
     )
     fecha_creacion = models.DateTimeField(db_default=Now(), editable=False)
+    fecha_actualizacion = models.DateTimeField(db_default=Now())
 
     class Meta:
         managed = False
         db_table = "grabaciones"
-        ordering = ("-fecha_creacion",)
+        ordering = ("-esta_activa", "-numero_version", "-fecha_creacion")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("tutoria", "numero_version"),
+                name="uq_grabacion_tutoria_version",
+            ),
+        )
 
     def clean(self):
         enlace = (self.enlace_grabacion or "").strip()
         ruta = (self.ruta_archivo or "").strip()
+        if self.tipo_grabacion == TipoGrabacion.ENLACE and enlace and not enlace.lower().startswith("https://"):
+            raise ValidationError("El enlace de grabacion debe usar HTTPS.")
+        if self.numero_version is not None and self.numero_version < 1:
+            raise ValidationError("La version de grabacion debe ser positiva.")
         if self.tipo_grabacion == TipoGrabacion.ENLACE and (not enlace or ruta):
             raise ValidationError("Para un enlace indique solo el enlace de grabación.")
         if self.tipo_grabacion == TipoGrabacion.ARCHIVO and (not ruta or enlace):
@@ -927,3 +1035,385 @@ class DocumentoProcesoAprobacion(models.Model):
 
     def __str__(self):
         return f"{self.proceso} · {self.get_tipo_documento_display()}"
+
+
+# ---------------------------------------------------------------------------
+# Fase 7A — Onboarding obligatorio del maestrante
+# ---------------------------------------------------------------------------
+
+
+class OnboardingMaestrante(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proyecto = models.OneToOneField(
+        ProyectoTitulacion,
+        on_delete=models.PROTECT,
+        db_column="proyecto_id",
+        related_name="onboarding",
+    )
+    maestrante = models.OneToOneField(
+        Maestrante,
+        on_delete=models.PROTECT,
+        db_column="maestrante_id",
+        related_name="onboarding",
+    )
+    estado = models.CharField(
+        max_length=30,
+        choices=EstadoOnboarding.choices,
+        db_default=EstadoOnboarding.PENDIENTE,
+    )
+    modalidad_seleccionada = models.CharField(
+        max_length=40,
+        choices=ModalidadProyecto.choices,
+        blank=True,
+        null=True,
+    )
+    fecha_seleccion = models.DateTimeField(blank=True, null=True)
+    seleccionado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="seleccionado_por_id",
+        blank=True,
+        null=True,
+        related_name="onboardings_seleccionados",
+    )
+    observaciones = models.TextField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "onboarding_maestrantes"
+        ordering = ("-fecha_creacion", "-id")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("maestrante",),
+                name="uq_onboarding_maestrante",
+            ),
+        )
+
+    def __str__(self):
+        return f"Onboarding {self.maestrante} ({self.estado})"
+
+    def clean(self):
+        if (
+            self.estado == EstadoOnboarding.COMPLETADO
+            and not self.modalidad_seleccionada
+        ):
+            raise ValidationError(
+                {"modalidad_seleccionada": "Debe registrarse la modalidad elegida para completar el onboarding."}
+            )
+
+
+# ---------------------------------------------------------------------------
+# Fase 7B — Configuración de modalidades editable por supervisor
+# ---------------------------------------------------------------------------
+
+
+class ModalidadConfigurada(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    programa = models.ForeignKey(
+        Programa,
+        on_delete=models.PROTECT,
+        db_column="programa_id",
+        related_name="modalidades_configuradas",
+        blank=True,
+        null=True,
+        help_text="Nulo = configuración global (aplica a todos los programas).",
+    )
+    tipo_modalidad = models.CharField(max_length=40, choices=ModalidadProyecto.choices)
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField(blank=True, null=True)
+    requiere_tutor = models.BooleanField(db_default=True)
+    esta_activa = models.BooleanField(db_default=True)
+    es_semilla_base = models.BooleanField(
+        db_default=False,
+        help_text="Marca las 3 modalidades base migradas desde REGLAS_BASE.",
+    )
+    creado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="creado_por_id",
+        blank=True,
+        null=True,
+        related_name="modalidades_configuradas_creadas",
+    )
+    actualizado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="actualizado_por_id",
+        blank=True,
+        null=True,
+        related_name="modalidades_configuradas_actualizadas",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "modalidades_configuradas"
+        ordering = ("programa__nombre", "tipo_modalidad")
+
+    def __str__(self):
+        return f"{self.nombre} ({self.get_tipo_modalidad_display()})"
+
+    def clean(self):
+        if not str(self.nombre or "").strip():
+            raise ValidationError({"nombre": "El nombre de la modalidad es obligatorio."})
+
+
+class EtapaProducto(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    modalidad = models.ForeignKey(
+        ModalidadConfigurada,
+        on_delete=models.PROTECT,
+        db_column="modalidad_id",
+        related_name="etapas",
+    )
+    orden = models.PositiveSmallIntegerField()
+    codigo = models.CharField(max_length=60)
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField(blank=True, null=True)
+    es_obligatoria = models.BooleanField(db_default=True)
+    esta_activa = models.BooleanField(db_default=True)
+
+    class Meta:
+        managed = False
+        db_table = "etapas_producto"
+        ordering = ("modalidad_id", "orden")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("modalidad", "orden"),
+                name="uq_etapa_producto_modalidad_orden",
+            ),
+            models.UniqueConstraint(
+                fields=("modalidad", "codigo"),
+                name="uq_etapa_producto_modalidad_codigo",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.modalidad} · {self.nombre}"
+
+
+class EntregaEtapa(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proyecto = models.ForeignKey(
+        ProyectoTitulacion,
+        on_delete=models.PROTECT,
+        db_column="proyecto_id",
+        related_name="entregas_etapa",
+    )
+    etapa = models.ForeignKey(
+        EtapaProducto,
+        on_delete=models.PROTECT,
+        db_column="etapa_id",
+        related_name="entregas",
+    )
+    numero_version = models.PositiveIntegerField(db_default=1)
+    archivo = models.ForeignKey(
+        ArchivoProyecto,
+        on_delete=models.PROTECT,
+        db_column="archivo_id",
+        blank=True,
+        null=True,
+        related_name="entregas_etapa",
+    )
+    comentario_maestrante = models.TextField(blank=True, null=True)
+    estado = models.CharField(
+        max_length=30,
+        choices=EstadoEtapaProducto.choices,
+        db_default=EstadoEtapaProducto.BORRADOR,
+    )
+    evaluacion = models.TextField(blank=True, null=True)
+    observaciones = models.TextField(blank=True, null=True)
+    coordinador_responsable = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="coordinador_responsable_id",
+        blank=True,
+        null=True,
+        related_name="entregas_etapa_evaluadas",
+    )
+    fecha_evaluacion = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "entregas_etapa"
+        ordering = ("proyecto_id", "etapa__orden", "-numero_version")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("proyecto", "etapa", "numero_version"),
+                name="uq_entrega_etapa_proyecto_etapa_version",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.proyecto} · {self.etapa} v{self.numero_version}"
+
+    def clean(self):
+        if self.numero_version is not None and self.numero_version < 1:
+            raise ValidationError({"numero_version": "La versión debe ser positiva."})
+
+
+# ---------------------------------------------------------------------------
+# Fase 7C — Novena tutoría excepcional
+# ---------------------------------------------------------------------------
+
+
+class AutorizacionNovenaTutoria(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proyecto = models.ForeignKey(
+        ProyectoTitulacion,
+        on_delete=models.PROTECT,
+        db_column="proyecto_id",
+        related_name="autorizaciones_novena_tutoria",
+    )
+    tutoria = models.OneToOneField(
+        Tutoria,
+        on_delete=models.PROTECT,
+        db_column="tutoria_id",
+        blank=True,
+        null=True,
+        related_name="autorizacion_novena",
+        help_text="Se vincula una vez creada la novena tutoría autorizada.",
+    )
+    solicitante = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="solicitante_id",
+        blank=True,
+        null=True,
+        related_name="novenas_tutoria_solicitadas",
+    )
+    motivo = models.TextField()
+    autorizado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="autorizado_por_id",
+        blank=True,
+        null=True,
+        related_name="novenas_tutoria_autorizadas",
+    )
+    fecha_autorizacion = models.DateTimeField(db_default=Now())
+
+    class Meta:
+        managed = False
+        db_table = "autorizaciones_novena_tutoria"
+        ordering = ("-fecha_autorizacion",)
+
+    def __str__(self):
+        return f"Novena tutoría autorizada · {self.proyecto}"
+
+    def clean(self):
+        if not str(self.motivo or "").strip():
+            raise ValidationError({"motivo": "Explique el motivo de la novena tutoría."})
+
+
+# ---------------------------------------------------------------------------
+# Fase 7D — Examen complexivo (flujo independiente) y escala configurable
+# ---------------------------------------------------------------------------
+
+
+class EscalaCalificacion(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    programa = models.ForeignKey(
+        Programa,
+        on_delete=models.PROTECT,
+        db_column="programa_id",
+        related_name="escalas_calificacion",
+        blank=True,
+        null=True,
+        help_text="Nulo = escala global por defecto.",
+    )
+    modalidad = models.ForeignKey(
+        ModalidadConfigurada,
+        on_delete=models.PROTECT,
+        db_column="modalidad_id",
+        related_name="escalas_calificacion",
+        blank=True,
+        null=True,
+    )
+    nombre = models.CharField(max_length=100)
+    nota_minima = models.DecimalField(max_digits=5, decimal_places=2)
+    nota_maxima = models.DecimalField(max_digits=5, decimal_places=2)
+    nota_aprobacion = models.DecimalField(max_digits=5, decimal_places=2)
+    esta_activa = models.BooleanField(db_default=True)
+
+    class Meta:
+        managed = False
+        db_table = "escalas_calificacion"
+        ordering = ("programa__nombre", "nombre")
+
+    def __str__(self):
+        return f"{self.nombre} ({self.nota_minima}-{self.nota_maxima})"
+
+    def clean(self):
+        if self.nota_minima is not None and self.nota_maxima is not None:
+            if self.nota_maxima <= self.nota_minima:
+                raise ValidationError({"nota_maxima": "Debe ser mayor a la nota mínima."})
+            if self.nota_aprobacion is not None and not (
+                self.nota_minima <= self.nota_aprobacion <= self.nota_maxima
+            ):
+                raise ValidationError(
+                    {"nota_aprobacion": "Debe estar dentro del rango mínimo-máximo."}
+                )
+
+
+class ExamenComplexivo(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proyecto = models.ForeignKey(
+        ProyectoTitulacion,
+        on_delete=models.PROTECT,
+        db_column="proyecto_id",
+        related_name="examenes_complexivos",
+    )
+    escala = models.ForeignKey(
+        EscalaCalificacion,
+        on_delete=models.PROTECT,
+        db_column="escala_id",
+        blank=True,
+        null=True,
+        related_name="examenes",
+    )
+    convocatoria = models.CharField(max_length=150)
+    fecha_hora = models.DateTimeField(blank=True, null=True)
+    tribunal = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Nombres/roles de los miembros del tribunal o responsables.",
+    )
+    numero_intento = models.PositiveSmallIntegerField(db_default=1)
+    calificacion = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    resultado = models.CharField(
+        max_length=20,
+        choices=ResultadoExamenComplexivo.choices,
+        db_default=ResultadoExamenComplexivo.PENDIENTE,
+    )
+    observaciones = models.TextField(blank=True, null=True)
+    acta_url = models.TextField(blank=True, null=True)
+    fue_reprogramado = models.BooleanField(db_default=False)
+    registrado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="registrado_por_id",
+        blank=True,
+        null=True,
+        related_name="examenes_complexivos_registrados",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "examenes_complexivos"
+        ordering = ("proyecto_id", "-numero_intento")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("proyecto", "numero_intento"),
+                name="uq_examen_complexivo_proyecto_intento",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.proyecto} · intento {self.numero_intento}"
+
+    def clean(self):
+        if self.escala_id and self.calificacion is not None:
+            if not (self.escala.nota_minima <= self.calificacion <= self.escala.nota_maxima):
+                raise ValidationError(
+                    {"calificacion": "La calificación está fuera del rango de la escala configurada."}
+                )

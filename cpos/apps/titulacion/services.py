@@ -18,16 +18,23 @@ from .models import (
     Aprobacion,
     ArchivoProyecto,
     AsignacionTutor,
+    AutorizacionNovenaTutoria,
     DisponibilidadTutor,
+    EntregaEtapa,
     EstadoAprobacion,
     EstadoAsignacion,
     EstadoCambioTema,
     EstadoCambioModalidad,
+    EstadoEtapaProducto,
+    EstadoOnboarding,
     EstadoProyecto,
     EstadoReprogramacion,
     EstadoSolicitudCambioTutor,
     EstadoTutoria,
+    EtapaProducto,
+    ModalidadConfigurada,
     ModalidadProyecto,
+    OnboardingMaestrante,
     ProyectoTitulacion,
     ReprogramacionTutoria,
     SolicitudCambioTutor,
@@ -558,9 +565,18 @@ def programar_tutoria(proyecto, tutor, datos, actor, request=None):
     ).first()
     if asignacion is None:
         raise ValidationError("El tutor ya no es la asignación activa del proyecto.")
-    if proyecto.tutorias.count() >= 8:
-        raise ValidationError("El proyecto ya tiene las ocho tutorías programadas.")
+    limite = 9 if tiene_autorizacion_novena_tutoria(proyecto) else 8
+    if proyecto.tutorias.count() >= limite:
+        raise ValidationError(
+            f"El proyecto ya tiene las {limite} tutorías permitidas "
+            f"{'(incluida la novena excepcional)' if limite == 9 else ''}."
+        )
     numero = int(datos["numero_tutoria"])
+    if numero == 9 and not tiene_autorizacion_novena_tutoria(proyecto):
+        raise ValidationError(
+            "La novena tutoría requiere autorización previa de coordinación "
+            "(AutorizacionNovenaTutoria)."
+        )
     if proyecto.tutorias.filter(numero_tutoria=numero).exists():
         raise ValidationError(f"La tutoría {numero} ya está programada.")
     validar_horario_tutoria(
@@ -824,6 +840,257 @@ def resolver_revision_archivo(archivo, actor, estado, observaciones, request=Non
             descripcion=f"El archivo fue marcado como {estado}.",
         )
     return aprobacion
+
+
+# ---------------------------------------------------------------------------
+# Fase 7A — Onboarding obligatorio del maestrante
+# ---------------------------------------------------------------------------
+
+MODULO_MINIMO_ONBOARDING = 5
+
+
+def maestrante_es_elegible_onboarding(maestrante) -> bool:
+    """Elegibilidad real vía Maestrante.modulo_actual (>= módulo 5)."""
+    if not maestrante:
+        return False
+    return (maestrante.modulo_actual or 0) >= MODULO_MINIMO_ONBOARDING
+
+
+def obtener_onboarding_maestrante(maestrante):
+    if not maestrante:
+        return None
+    return OnboardingMaestrante.objects.filter(maestrante=maestrante).first()
+
+
+def onboarding_completado(usuario) -> bool:
+    """True si el usuario no es maestrante (no aplica el gate) o si ya completó."""
+    if rol_usuario(usuario) != "maestrante":
+        return True
+    maestrante = getattr(usuario, "perfil_maestrante", None)
+    onboarding = obtener_onboarding_maestrante(maestrante)
+    return bool(onboarding and onboarding.estado == EstadoOnboarding.COMPLETADO)
+
+
+@transaction.atomic
+def iniciar_onboarding(usuario):
+    """Crea (si no existe) el proyecto borrador + OnboardingMaestrante."""
+    maestrante = getattr(usuario, "perfil_maestrante", None)
+    if not maestrante:
+        raise PermissionDenied("Solo un maestrante puede iniciar el onboarding.")
+    if not maestrante_es_elegible_onboarding(maestrante):
+        raise PermissionDenied(
+            f"El maestrante debe estar al menos en el módulo {MODULO_MINIMO_ONBOARDING} "
+            "para iniciar el onboarding."
+        )
+    onboarding = obtener_onboarding_maestrante(maestrante)
+    if onboarding:
+        return onboarding
+    proyecto = ProyectoTitulacion.objects.filter(maestrante=maestrante).first()
+    if proyecto is None:
+        proyecto = ProyectoTitulacion.objects.create(
+            maestrante=maestrante,
+            tema="Tema pendiente de definición",
+            modalidad=ModalidadProyecto.OTRA,
+            estado=EstadoProyecto.BORRADOR,
+            creado_por=usuario,
+            actualizado_por=usuario,
+        )
+    onboarding = OnboardingMaestrante.objects.create(
+        proyecto=proyecto,
+        maestrante=maestrante,
+        estado=EstadoOnboarding.EN_SELECCION,
+    )
+    return onboarding
+
+
+@transaction.atomic
+def completar_onboarding(usuario, modalidad):
+    maestrante = getattr(usuario, "perfil_maestrante", None)
+    onboarding = obtener_onboarding_maestrante(maestrante)
+    if not onboarding:
+        raise ValidationError("Debe iniciar el onboarding antes de seleccionar modalidad.")
+    if onboarding.estado == EstadoOnboarding.COMPLETADO:
+        raise ValidationError("El onboarding ya fue completado.")
+    if not modalidad_disponible(maestrante.programa, modalidad):
+        raise ValidationError("La modalidad seleccionada no está disponible para su programa.")
+    onboarding.modalidad_seleccionada = modalidad
+    onboarding.fecha_seleccion = timezone.now()
+    onboarding.seleccionado_por = usuario
+    onboarding.estado = EstadoOnboarding.COMPLETADO
+    onboarding.full_clean()
+    onboarding.save()
+    proyecto = onboarding.proyecto
+    proyecto.modalidad = modalidad
+    proyecto.actualizado_por = usuario
+    proyecto.save(update_fields=("modalidad", "actualizado_por", "fecha_actualizacion"))
+    return onboarding
+
+
+# ---------------------------------------------------------------------------
+# Fase 7B — Modalidades configurables por el supervisor
+# ---------------------------------------------------------------------------
+
+
+def modalidades_configuradas_activas(programa=None):
+    consulta = ModalidadConfigurada.objects.filter(esta_activa=True)
+    if programa is not None:
+        consulta = consulta.filter(Q(programa__isnull=True) | Q(programa=programa))
+    else:
+        consulta = consulta.filter(programa__isnull=True)
+    return consulta.order_by("tipo_modalidad")
+
+
+def etapas_de_modalidad(modalidad_configurada):
+    return EtapaProducto.objects.filter(
+        modalidad=modalidad_configurada, esta_activa=True
+    ).order_by("orden")
+
+
+# ---------------------------------------------------------------------------
+# Fase 7C — Novena tutoría excepcional
+# ---------------------------------------------------------------------------
+
+
+def tiene_autorizacion_novena_tutoria(proyecto) -> bool:
+    if not proyecto:
+        return False
+    return AutorizacionNovenaTutoria.objects.filter(proyecto=proyecto).exists()
+
+
+def puede_autorizar_novena_tutoria(usuario) -> bool:
+    return rol_usuario(usuario) == "coordinador" or usuario_tiene_permiso(
+        usuario, "NOVENA_TUTORIA_AUTORIZAR"
+    )
+
+
+@transaction.atomic
+def autorizar_novena_tutoria(proyecto, motivo, actor, request=None):
+    if not puede_autorizar_novena_tutoria(actor):
+        raise PermissionDenied("No puede autorizar una novena tutoría.")
+    if tiene_autorizacion_novena_tutoria(proyecto):
+        raise ValidationError("El proyecto ya tiene una novena tutoría autorizada.")
+    if proyecto.tutorias.count() < 8:
+        raise ValidationError(
+            "Solo puede autorizarse la novena tutoría luego de completar las ocho ordinarias."
+        )
+    autorizacion = AutorizacionNovenaTutoria(
+        proyecto=proyecto,
+        solicitante=actor,
+        motivo=motivo,
+        autorizado_por=actor,
+    )
+    autorizacion.full_clean()
+    autorizacion.save()
+    if request:
+        registrar_evento(
+            request,
+            accion="autorizar_novena_tutoria",
+            tabla="autorizaciones_novena_tutoria",
+            registro_id=autorizacion.pk,
+            descripcion="Se autorizó una novena tutoría excepcional.",
+        )
+    return autorizacion
+
+
+# ---------------------------------------------------------------------------
+# Fase 7D — Entregas por etapa
+# ---------------------------------------------------------------------------
+
+
+def etapa_esta_bloqueada(proyecto, etapa) -> bool:
+    """Refleja en UI el mismo bloqueo de orden que impone el trigger SQL
+    `fase7_validar_orden_etapas`: una etapa obligatoria está bloqueada si
+    alguna etapa obligatoria previa (mismo orden anterior) no tiene aún una
+    entrega aprobada."""
+    if not etapa.es_obligatoria:
+        return False
+    previas = EtapaProducto.objects.filter(
+        modalidad=etapa.modalidad,
+        es_obligatoria=True,
+        orden__lt=etapa.orden,
+    )
+    for previa in previas:
+        aprobada = EntregaEtapa.objects.filter(
+            proyecto=proyecto, etapa=previa, estado=EstadoEtapaProducto.APROBADA
+        ).exists()
+        if not aprobada:
+            return True
+    return False
+
+
+def puede_subir_entrega_etapa(usuario, proyecto) -> bool:
+    return (
+        rol_usuario(usuario) == "maestrante"
+        and getattr(usuario, "perfil_maestrante", None) is not None
+        and proyecto.maestrante_id == usuario.perfil_maestrante.id
+    )
+
+
+def puede_evaluar_entrega_etapa(usuario) -> bool:
+    return rol_usuario(usuario) == "coordinador"
+
+
+@transaction.atomic
+def crear_entrega_etapa(proyecto, etapa, actor, *, archivo=None, comentario=None, request=None):
+    if not puede_subir_entrega_etapa(actor, proyecto):
+        raise PermissionDenied("Solo el maestrante propietario puede subir esta entrega.")
+    if etapa_esta_bloqueada(proyecto, etapa):
+        raise ValidationError(
+            "Esta etapa está bloqueada hasta que las etapas obligatorias previas sean aprobadas."
+        )
+    ultima_version = EntregaEtapa.objects.filter(
+        proyecto=proyecto, etapa=etapa
+    ).order_by("-numero_version").first()
+    numero_version = (ultima_version.numero_version + 1) if ultima_version else 1
+    entrega = EntregaEtapa(
+        proyecto=proyecto,
+        etapa=etapa,
+        numero_version=numero_version,
+        archivo=archivo,
+        comentario_maestrante=comentario,
+        estado=EstadoEtapaProducto.ENVIADA,
+    )
+    entrega.full_clean()
+    entrega.save()
+    if request:
+        registrar_evento(
+            request,
+            accion="crear_entrega_etapa",
+            tabla="entregas_etapa",
+            registro_id=entrega.pk,
+            descripcion=f"Entrega v{numero_version} para etapa {etapa.nombre}.",
+        )
+    return entrega
+
+
+@transaction.atomic
+def evaluar_entrega_etapa(entrega, actor, estado, *, evaluacion=None, observaciones=None, request=None):
+    if not puede_evaluar_entrega_etapa(actor):
+        raise PermissionDenied("Solo coordinación puede evaluar entregas de etapa.")
+    if estado not in {
+        EstadoEtapaProducto.APROBADA,
+        EstadoEtapaProducto.OBSERVADA,
+        EstadoEtapaProducto.RECHAZADA,
+    }:
+        raise ValidationError("Estado de evaluación no permitido.")
+    if entrega.estado == EstadoEtapaProducto.APROBADA:
+        raise ValidationError("La entrega ya fue aprobada y es inmutable.")
+    entrega.estado = estado
+    entrega.evaluacion = evaluacion
+    entrega.observaciones = observaciones
+    entrega.coordinador_responsable = actor
+    entrega.fecha_evaluacion = timezone.now()
+    entrega.full_clean()
+    entrega.save()
+    if request:
+        registrar_evento(
+            request,
+            accion="evaluar_entrega_etapa",
+            tabla="entregas_etapa",
+            registro_id=entrega.pk,
+            descripcion=f"Entrega marcada como {estado}.",
+        )
+    return entrega
 
 
 def resumen_evidencias(proyecto):

@@ -1,0 +1,49 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><h2>Modalidades y etapas configurables</h2><p>El supervisor (y coordinación/administración) configura; el maestrante solo ve las modalidades activas de su programa al hacer onboarding.</p></div>
+  <a class="btn" href="{% url 'titulacion:modalidad_configurada_create' %}">Nueva modalidad</a>
+</div>
+
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Modalidad</th><th>Alcance</th><th>Tipo</th><th>Requiere tutor</th><th>Estado</th><th>Etapas</th><th>Acciones</th></tr></thead>
+    <tbody>
+      {% for modalidad in modalidades %}
+        <tr>
+          <td><b>{{ modalidad.nombre }}</b>{% if modalidad.es_semilla_base %}<div class="tiny">Modalidad base (semilla)</div>{% endif %}</td>
+          <td>{{ modalidad.programa.codigo|default:'Global' }}</td>
+          <td>{{ modalidad.get_tipo_modalidad_display }}</td>
+          <td>{% if modalidad.requiere_tutor %}Sí{% else %}No{% endif %}</td>
+          <td>{% if modalidad.esta_activa %}<span class="badge ok">Activa</span>{% else %}<span class="badge danger">Inactiva</span>{% endif %}</td>
+          <td>
+            <ul class="tiny">
+              {% for etapa in modalidad.etapas.all %}
+                <li>{{ etapa.orden }}. {{ etapa.nombre }}{% if not etapa.es_obligatoria %} (opcional){% endif %}{% if not etapa.esta_activa %} — inactiva{% endif %}
+                  <a href="{% url 'titulacion:etapa_producto_update' etapa.pk %}">editar</a>
+                  <form method="post" action="{% url 'titulacion:etapa_producto_toggle' etapa.pk %}" style="display:inline">{% csrf_token %}<button class="linklike" type="submit">{% if etapa.esta_activa %}desactivar{% else %}activar{% endif %}</button></form>
+                </li>
+              {% empty %}
+                <li class="tiny">Sin etapas (usa flujo independiente, p. ej. examen complexivo)</li>
+              {% endfor %}
+            </ul>
+            {% if modalidad.tipo_modalidad != 'examen_complexivo' %}
+              <a class="tiny" href="{% url 'titulacion:etapa_producto_create' modalidad.pk %}">+ Añadir etapa</a>
+            {% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              <a class="btn secondary smallbtn" href="{% url 'titulacion:modalidad_configurada_update' modalidad.pk %}">Editar</a>
+              <form method="post" action="{% url 'titulacion:modalidad_configurada_toggle' modalidad.pk %}">{% csrf_token %}<button class="btn secondary smallbtn" type="submit">{% if modalidad.esta_activa %}Desactivar{% else %}Activar{% endif %}</button></form>
+            </div>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7"><div class="empty-state">No hay modalidades configuradas.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="tiny">Una modalidad con expedientes activos nunca se elimina físicamente: solo se desactiva. Los expedientes existentes siguen consultables y una modalidad desactivada no admite nuevos onboardings.</p>
+{% endblock %}

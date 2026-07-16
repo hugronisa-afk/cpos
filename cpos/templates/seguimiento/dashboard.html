@@ -37,7 +37,7 @@
   <div class="card stat">
     <div>
       <span class="small">Evidencias validadas</span>
-      <div class="metric">{{ progreso_evidencias.validadas }}/{{ regla_modalidad.total_evidencias|default:8 }}</div>
+      <div class="metric">{{ progreso_evidencias.validadas_correspondientes }}/{{ regla_modalidad.total_evidencias|default:8 }}</div>
       <div class="progress">
         <span class="bar
   {% if progreso_evidencias.porcentaje >= 100 %}w-100
@@ -99,6 +99,20 @@
     </div>
     <div class="icon">CI</div>
   </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Estado de las ocho correspondencias</h3>
+  <div class="pill-row">
+    <span class="badge">Programadas: {{ progreso_tutorias.programadas }}</span>
+    <span class="badge ok">Realizadas con asistencia completa: {{ progreso_tutorias.realizadas }}</span>
+    <span class="badge">Evidencias cargadas: {{ progreso_evidencias.total }}</span>
+    <span class="badge warn">Observadas: {{ progreso_evidencias.observadas }}</span>
+    <span class="badge danger">Rechazadas: {{ progreso_evidencias.rechazadas }}</span>
+    <span class="badge ok">Validadas correspondientes: {{ progreso_evidencias.validadas_correspondientes }}</span>
+    <span class="badge warn">Sesiones bloqueadas: {{ progreso_tutorias.bloqueadas }}</span>
+  </div>
+  <p class="small">Ocho archivos aislados no completan el requisito: cada evidencia validada debe pertenecer a una tutoría realizada con asistencia del tutor y del maestrante.</p>
 </div>
 
 <div class="grid cols-2" style="margin-top:18px">

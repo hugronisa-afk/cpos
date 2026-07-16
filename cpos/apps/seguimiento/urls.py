@@ -39,4 +39,9 @@ urlpatterns = [
 
     # Notificaciones
     path("notificaciones/", views.notificaciones_seguimiento, name="notificaciones"),
+
+    # Fase 7D - Entregas por etapa del producto final
+    path("proyectos/<int:proyecto_id>/entregas-etapa/", views.lista_entregas_etapa, name="entregas_etapa"),
+    path("proyectos/<int:proyecto_id>/entregas-etapa/<int:etapa_id>/subir/", views.subir_entrega_etapa, name="subir_entrega_etapa"),
+    path("entregas-etapa/<int:entrega_id>/evaluar/", views.evaluar_entrega_etapa_view, name="evaluar_entrega_etapa"),
 ]

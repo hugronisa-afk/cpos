@@ -1,0 +1,46 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div><h2>Producto final por etapas</h2><p>{{ modalidad_configurada.nombre|default:'Modalidad sin etapas configuradas' }}</p></div>
+</div>
+
+{% if not modalidad_configurada or not etapas %}
+  <div class="empty-state">Esta modalidad no tiene etapas configuradas (por ejemplo, examen complexivo usa un flujo independiente).</div>
+{% else %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Orden</th><th>Etapa</th><th>Obligatoria</th><th>Última entrega</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody>
+      {% for etapa in etapas %}
+        <tr>
+          <td>{{ etapa.orden }}</td>
+          <td>{{ etapa.nombre }}</td>
+          <td>{% if etapa.es_obligatoria %}Sí{% else %}No{% endif %}</td>
+          <td>{% if etapa.ultima_entrega %}v{{ etapa.ultima_entrega.numero_version }} · {{ etapa.ultima_entrega.fecha_creacion|date:'Y-m-d' }}{% else %}Sin entregas{% endif %}</td>
+          <td>
+            {% if etapa.bloqueada %}<span class="badge danger">Bloqueada</span>
+            {% elif etapa.ultima_entrega.estado == 'aprobada' %}<span class="badge ok">Aprobada</span>
+            {% elif etapa.ultima_entrega.estado == 'observada' %}<span class="badge warn">Observada</span>
+            {% elif etapa.ultima_entrega.estado == 'rechazada' %}<span class="badge danger">Rechazada</span>
+            {% elif etapa.ultima_entrega.estado == 'enviada' or etapa.ultima_entrega.estado == 'en_revision' %}<span class="badge">En revisión</span>
+            {% else %}<span class="badge">Disponible</span>{% endif %}
+          </td>
+          <td>
+            {% if puede_subir and not etapa.bloqueada and etapa.ultima_entrega.estado != 'aprobada' %}
+              <a class="btn secondary smallbtn" href="{% url 'seguimiento:subir_entrega_etapa' proyecto.pk etapa.pk %}">Subir entrega</a>
+            {% elif puede_subir and etapa.bloqueada %}
+              <span class="tiny">Complete las etapas obligatorias previas primero.</span>
+            {% endif %}
+            {% if puede_evaluar and etapa.ultima_entrega and etapa.ultima_entrega.estado != 'aprobada' %}
+              <a class="btn secondary smallbtn" href="{% url 'seguimiento:evaluar_entrega_etapa' etapa.ultima_entrega.pk %}">Evaluar</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if rol == 'supervisor' %}<p class="tiny">Vista de solo consulta: el supervisor configura modalidades pero no evalúa entregas.</p>{% endif %}
+{% endif %}
+{% endblock %}

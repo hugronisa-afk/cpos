@@ -47,7 +47,7 @@
           <div class="item">
             <h4>{{ validacion.estado_resultado|title }}</h4>
             <p>{{ validacion.observaciones|default:"Sin observaciones" }}</p>
-            <p class="tiny">{{ validacion.fecha_creacion|date:"d/m/Y H:i" }}</p>
+            <p class="tiny">Versión {{ validacion.evidencia_version.numero_version }} · {{ validacion.validado_por|default:"Usuario no disponible" }} · {{ validacion.fecha_creacion|date:"d/m/Y H:i" }}</p>
           </div>
         {% endfor %}
       </div>
@@ -63,9 +63,9 @@
       <div class="timeline">
         {% for version in versiones %}
           <div class="item">
-            <h4>Versión {{ version.numero_version }}</h4>
+            <h4>Versión {{ version.numero_version }} <span class="badge">{{ version.estado }}</span></h4>
             <p>{{ version.comentario|default:"Sin descripción de cambios" }}</p>
-            <p class="tiny">{{ version.fecha_creacion|date:"d/m/Y H:i" }}</p>
+            <p class="tiny">{{ version.subido_por|default:"Usuario no disponible" }} · {{ version.fecha_creacion|date:"d/m/Y H:i" }}</p>
             {% if version.archivo_url %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:descargar_version' version.id %}">Descargar</a>{% endif %}
           </div>
         {% endfor %}

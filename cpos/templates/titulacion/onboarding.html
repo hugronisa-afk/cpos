@@ -1,0 +1,62 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div>
+    <h2>Onboarding de titulación</h2>
+    <p>Debe completar este paso antes de acceder al seguimiento de tutorías y evidencias.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Su expediente</h3>
+  <p><b>Programa:</b> {{ maestrante.programa.nombre }} ({{ maestrante.programa.codigo }})</p>
+  <p><b>Cohorte:</b> {{ maestrante.cohorte.nombre }}</p>
+  <p><b>Matrícula:</b> {{ maestrante.codigo_matricula }}</p>
+  <p><b>Módulo actual:</b> {{ maestrante.modulo_actual }} (mínimo requerido: {{ modulo_minimo }})</p>
+</div>
+
+<div class="card">
+  <h3>Proceso de titulación</h3>
+  <p>
+    El proceso consiste en: (1) seleccionar una modalidad de titulación activa para su
+    programa, (2) recibir la asignación de un tutor por parte de coordinación cuando la
+    modalidad lo requiera, (3) desarrollar hasta ocho tutorías y sus evidencias, y
+    (4) construir el producto final por etapas (o rendir el examen complexivo, según la
+    modalidad elegida). Una vez seleccionada la modalidad, cualquier cambio posterior
+    requiere una solicitud formal de cambio de modalidad.
+  </p>
+</div>
+
+{% if not elegible %}
+  <div class="alert warn">
+    Su módulo académico actual ({{ maestrante.modulo_actual }}) es menor al módulo mínimo
+    requerido ({{ modulo_minimo }}) para iniciar el onboarding. Cuando alcance el módulo
+    correspondiente, coordinación habilitará este paso.
+  </div>
+{% elif onboarding.estado == 'completado' %}
+  <div class="alert ok">
+    Onboarding completado el {{ onboarding.fecha_seleccion }}. Modalidad seleccionada:
+    {{ onboarding.get_modalidad_seleccionada_display }}.
+  </div>
+  <a class="btn" href="{% url 'seguimiento:dashboard' %}">Ir al seguimiento</a>
+{% else %}
+  <div class="card">
+    <h3>Seleccione su modalidad de titulación</h3>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.non_field_errors }}
+      {% for field in form %}
+        <div class="field">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {{ field.errors }}
+        </div>
+      {% endfor %}
+      <div class="actions">
+        <button class="btn" type="submit">Confirmar selección</button>
+      </div>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}

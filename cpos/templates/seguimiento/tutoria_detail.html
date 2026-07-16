@@ -31,18 +31,24 @@
         <p><b>Tutor:</b> {% if asistencia.asistio_tutor %}<span class="badge ok">Asistió</span>{% else %}<span class="badge danger">No asistió</span>{% endif %}</p>
         <p><b>Maestrante:</b> {% if asistencia.asistio_maestrante %}<span class="badge ok">Asistió</span>{% else %}<span class="badge danger">No asistió</span>{% endif %}</p>
         {% if asistencia.observaciones %}<p class="small">{{ asistencia.observaciones }}</p>{% endif %}
+        <p class="tiny">Registró: {{ asistencia.registrado_por|default:"Usuario no disponible" }} · {{ asistencia.fecha_actualizacion|date:"d/m/Y H:i" }}</p>
       {% endfor %}
     {% else %}
       <p class="small">Aún no se registra asistencia.</p>
     {% endif %}
 
     {% if puede_registrar_asistencia %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_asistencia' tutoria.id %}">Registrar asistencia</a>{% endif %}
+    {% if puede_corregir_asistencia %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_asistencia' tutoria.id %}">Corregir con motivo</a>{% endif %}
+    {% if puede_cancelar_asistencia %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_asistencia' tutoria.id %}">Cancelar sesión con motivo</a>{% endif %}
   </div>
 
   <div class="card">
     <h3>Grabaciones</h3>
     {% if grabaciones %}
       {% for grabacion in grabaciones %}
+        <div class="item">
+        <p><b>Versión {{ grabacion.numero_version }}</b>
+          {% if grabacion.esta_activa %}<span class="badge ok">Activa</span>{% else %}<span class="badge">Histórica</span>{% endif %}</p>
         <p>
           {% if grabacion.enlace_grabacion %}
             <a href="{% url 'seguimiento:grabacion_enlace' grabacion.id %}" target="_blank" rel="noopener noreferrer">Ver grabación</a>
@@ -52,14 +58,42 @@
             Grabación sin archivo o enlace
           {% endif %}
         </p>
+        <p class="tiny">Registró: {{ grabacion.registrado_por|default:"Usuario no disponible" }} · {{ grabacion.fecha_creacion|date:"d/m/Y H:i" }}</p>
+        </div>
       {% endfor %}
     {% else %}
       <p class="small">No hay grabaciones registradas.</p>
     {% endif %}
 
-    {% if puede_registrar_grabacion %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_grabacion' tutoria.id %}">Registrar grabación</a>{% endif %}
+    {% if puede_registrar_grabacion %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_grabacion' tutoria.id %}">{% if reemplaza_grabacion %}Reemplazar grabación{% else %}Registrar grabación{% endif %}</a>{% endif %}
   </div>
 </div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Integridad de la sesión</h3>
+  <div class="pill-row">
+    {% if estado_integridad.asistencia_completa %}<span class="badge ok">Asistencia completa</span>{% else %}<span class="badge warn">Asistencia pendiente</span>{% endif %}
+    {% if estado_integridad.realizada_valida %}<span class="badge ok">Sesión realizada</span>{% else %}<span class="badge warn">Sesión no acreditada</span>{% endif %}
+    {% if estado_integridad.tiene_grabacion %}<span class="badge ok">Grabación disponible</span>{% else %}<span class="badge warn">Grabación pendiente</span>{% endif %}
+    {% if estado_integridad.evidencia_validada %}<span class="badge ok">Evidencia validada</span>{% elif estado_integridad.evidencia %}<span class="badge warn">Evidencia {{ estado_integridad.evidencia.estado }}</span>{% else %}<span class="badge warn">Evidencia pendiente</span>{% endif %}
+  </div>
+  <p class="small">La sesión cuenta para el progreso únicamente cuando está realizada con asistencia de ambos y su evidencia está validada.</p>
+</div>
+
+{% if historial_asistencia %}
+<div class="card" style="margin-top:18px">
+  <h3>Correcciones de asistencia</h3>
+  <div class="timeline">
+    {% for cambio in historial_asistencia %}
+      <div class="item">
+        <h4>{{ cambio.estado_tutoria_anterior }} → {{ cambio.estado_tutoria_nuevo }}</h4>
+        <p>{{ cambio.motivo_correccion }}</p>
+        <p class="tiny">{{ cambio.corregido_por|default:"Usuario no disponible" }} · {{ cambio.fecha_creacion|date:"d/m/Y H:i" }}</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <div class="card" style="margin-top:18px">
   <div class="page-head" style="margin-bottom:12px">

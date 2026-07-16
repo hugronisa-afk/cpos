@@ -52,6 +52,8 @@
                 {% else %}
                   <span class="badge warn">{{ tutoria.estado }}</span>
                 {% endif %}
+                {% if tutoria.esta_vencida %}<span class="badge danger">Vencida sin regularizar</span>{% endif %}
+                {% if tutoria.integridad_fase6.completa %}<span class="badge ok">Completa</span>{% elif tutoria.estado == "realizada" %}<span class="badge warn">Incompleta</span>{% endif %}
               </td>
               <td>
                 <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_tutoria' tutoria.id %}">Ver detalle</a>

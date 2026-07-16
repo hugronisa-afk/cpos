@@ -12,11 +12,19 @@ from .models import (
     Articulo,
     AsignacionTutor,
     AsistenciaTutoria,
+    AutorizacionNovenaTutoria,
     ConfiguracionModalidadPrograma,
     DisponibilidadTutor,
+    EntregaEtapa,
+    EscalaCalificacion,
     EstadoSolicitudCambioTutor,
     EstadoProyecto,
+    EtapaProducto,
+    ExamenComplexivo,
     Grabacion,
+    ModalidadConfigurada,
+    ModalidadProyecto,
+    OnboardingMaestrante,
     ProyectoTitulacion,
     ReprogramacionTutoria,
     SolicitudCambioTutor,
@@ -476,13 +484,17 @@ class TutoriaForm(FormularioEstilizadoMixin, forms.ModelForm):
         self.proyecto = proyecto
         super().__init__(*args, **kwargs)
         ocupados = set()
+        limite = 8
         if proyecto is not None:
             ocupados = set(
                 proyecto.tutorias.values_list("numero_tutoria", flat=True)
             )
+            if getattr(proyecto, "pk", None):
+                if AutorizacionNovenaTutoria.objects.filter(proyecto_id=proyecto.pk).exists():
+                    limite = 9
         self.fields["numero_tutoria"].choices = [
-            (numero, f"Tutoría {numero}")
-            for numero in range(1, 9)
+            (numero, f"Tutoría {numero}" + (" (excepcional autorizada)" if numero == 9 else ""))
+            for numero in range(1, limite + 1)
             if numero not in ocupados
         ]
         self.fields["enlace_virtual"].required = True
@@ -710,3 +722,165 @@ class SolicitudCambioModalidadForm(FormularioEstilizadoMixin, forms.ModelForm):
         if not justificacion:
             raise ValidationError("La justificación es obligatoria.")
         return justificacion
+
+
+# ---------------------------------------------------------------------------
+# Fase 7A — Onboarding
+# ---------------------------------------------------------------------------
+
+
+class SeleccionModalidadOnboardingForm(FormularioEstilizadoMixin, forms.Form):
+    modalidad = forms.ChoiceField(label="Modalidad de titulación", choices=())
+
+    def __init__(self, *args, opciones=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["modalidad"].choices = opciones
+
+    def clean_modalidad(self):
+        modalidad = self.cleaned_data["modalidad"]
+        permitidas = {codigo for codigo, _ in self.fields["modalidad"].choices}
+        if modalidad not in permitidas:
+            raise ValidationError("Seleccione una modalidad activa para su programa.")
+        return modalidad
+
+
+# ---------------------------------------------------------------------------
+# Fase 7B — Modalidades configurables y sus etapas
+# ---------------------------------------------------------------------------
+
+
+class ModalidadConfiguradaForm(FormularioEstilizadoMixin, forms.ModelForm):
+    class Meta:
+        model = ModalidadConfigurada
+        fields = (
+            "programa",
+            "tipo_modalidad",
+            "nombre",
+            "descripcion",
+            "requiere_tutor",
+            "esta_activa",
+        )
+        widgets = {"descripcion": forms.Textarea(attrs={"rows": 4})}
+        labels = {
+            "programa": "Programa (vacío = global)",
+            "esta_activa": "Disponible para nuevos onboardings",
+        }
+
+    def __init__(self, *args, usuario=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["programa"].required = False
+        rol = str(getattr(getattr(usuario, "rol", None), "nombre", "")).lower()
+        if rol == "coordinador":
+            self.fields["programa"].queryset = Programa.objects.filter(coordinador=usuario)
+
+
+class EtapaProductoForm(FormularioEstilizadoMixin, forms.ModelForm):
+    class Meta:
+        model = EtapaProducto
+        fields = ("modalidad", "orden", "codigo", "nombre", "descripcion", "es_obligatoria", "esta_activa")
+        widgets = {"descripcion": forms.Textarea(attrs={"rows": 3})}
+
+
+# ---------------------------------------------------------------------------
+# Fase 7C — Novena tutoría excepcional
+# ---------------------------------------------------------------------------
+
+
+class AutorizacionNovenaTutoriaForm(FormularioEstilizadoMixin, forms.ModelForm):
+    class Meta:
+        model = AutorizacionNovenaTutoria
+        fields = ("motivo",)
+        widgets = {"motivo": forms.Textarea(attrs={"rows": 4})}
+
+    def clean_motivo(self):
+        motivo = self.cleaned_data["motivo"].strip()
+        if not motivo:
+            raise ValidationError("Explique el motivo de la novena tutoría.")
+        return motivo
+
+
+# ---------------------------------------------------------------------------
+# Fase 7D — Entregas por etapa, examen complexivo y escala de calificación
+# ---------------------------------------------------------------------------
+
+
+class EntregaEtapaForm(FormularioEstilizadoMixin, forms.Form):
+    archivo = forms.FileField(label="Archivo de la entrega", required=False)
+    comentario = forms.CharField(
+        label="Comentario",
+        required=False,
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+
+
+class EvaluarEntregaEtapaForm(FormularioEstilizadoMixin, forms.Form):
+    ESTADOS = (
+        ("aprobada", "Aprobar"),
+        ("observada", "Observar"),
+        ("rechazada", "Rechazar"),
+    )
+    estado = forms.ChoiceField(label="Resolución", choices=ESTADOS)
+    evaluacion = forms.CharField(
+        label="Evaluación", required=False, widget=forms.Textarea(attrs={"rows": 3})
+    )
+    observaciones = forms.CharField(
+        label="Observaciones", required=False, widget=forms.Textarea(attrs={"rows": 3})
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("estado") != "aprobada" and not str(cleaned.get("observaciones") or "").strip():
+            raise ValidationError({"observaciones": "Debe registrar observaciones al observar o rechazar."})
+        return cleaned
+
+
+class ExamenComplexivoForm(FormularioEstilizadoMixin, forms.ModelForm):
+    class Meta:
+        model = ExamenComplexivo
+        fields = (
+            "escala",
+            "convocatoria",
+            "fecha_hora",
+            "tribunal",
+            "numero_intento",
+            "calificacion",
+            "resultado",
+            "observaciones",
+            "acta_url",
+            "fue_reprogramado",
+        )
+        widgets = {
+            "fecha_hora": forms.DateTimeInput(attrs={"type": "datetime-local"}),
+            "tribunal": forms.Textarea(attrs={"rows": 3}),
+            "observaciones": forms.Textarea(attrs={"rows": 3}),
+        }
+
+
+class EscalaCalificacionForm(FormularioEstilizadoMixin, forms.ModelForm):
+    class Meta:
+        model = EscalaCalificacion
+        fields = (
+            "programa",
+            "modalidad",
+            "nombre",
+            "nota_minima",
+            "nota_maxima",
+            "nota_aprobacion",
+            "esta_activa",
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        minima = cleaned.get("nota_minima")
+        maxima = cleaned.get("nota_maxima")
+        aprobacion = cleaned.get("nota_aprobacion")
+        if minima is not None and maxima is not None and maxima <= minima:
+            raise ValidationError({"nota_maxima": "Debe ser mayor a la nota mínima."})
+        if (
+            aprobacion is not None
+            and minima is not None
+            and maxima is not None
+            and not (minima <= aprobacion <= maxima)
+        ):
+            raise ValidationError({"nota_aprobacion": "Debe estar dentro del rango mínimo-máximo."})
+        return cleaned

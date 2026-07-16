@@ -1,6 +1,11 @@
 """Consultas y reglas de negocio del seguimiento académico."""
 
+from datetime import datetime
+
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.db.models import Count, Max, OuterRef, Subquery
+from django.utils import timezone
 
 from apps.accounts.models import Maestrante, UsuarioCPOS
 from apps.accounts.services import (
@@ -14,6 +19,7 @@ from apps.titulacion.models import (
     ArchivoProyecto,
     AsignacionTutor,
     AsistenciaTutoria,
+    AsistenciaTutoriaHistorial,
     EstadoAsignacion,
     EstadoProyecto,
     EstadoTutoria,
@@ -100,6 +106,299 @@ def registrar_bitacora(
     )
 
 
+def _fin_tutoria(tutoria):
+    fin = datetime.combine(tutoria.fecha, tutoria.hora_fin)
+    if timezone.is_naive(fin):
+        fin = timezone.make_aware(fin, timezone.get_current_timezone())
+    return fin
+
+
+def tutoria_ya_finalizo(tutoria):
+    return bool(tutoria and _fin_tutoria(tutoria) <= timezone.now())
+
+
+def asistencia_es_completa(asistencia):
+    return bool(
+        asistencia
+        and asistencia.asistio_tutor
+        and asistencia.asistio_maestrante
+    )
+
+
+def usuario_puede_registrar_asistencia(usuario, tutoria):
+    return (
+        tutoria
+        and es_tutor(usuario)
+        and tutoria.tutor.usuario_id == usuario.pk
+        and usuario_tiene_permiso(usuario, "ASISTENCIA_REGISTRAR")
+    )
+
+
+def usuario_puede_corregir_asistencia(usuario, tutoria):
+    return (
+        tutoria
+        and es_coordinador(usuario)
+        and usuario_puede_ver_proyecto(usuario, tutoria.proyecto)
+        and usuario_tiene_permiso(usuario, "ASISTENCIA_CORREGIR")
+    )
+
+
+def usuario_puede_gestionar_grabacion(usuario, tutoria, reemplazo=False):
+    permiso = "GRABACION_REEMPLAZAR" if reemplazo else "GRABACION_REGISTRAR"
+    return (
+        tutoria
+        and es_tutor(usuario)
+        and tutoria.tutor.usuario_id == usuario.pk
+        and usuario_tiene_permiso(usuario, permiso)
+    )
+
+
+def obtener_estado_integridad_tutoria(tutoria):
+    asistencia = AsistenciaTutoria.objects.filter(tutoria=tutoria).first()
+    evidencia = Evidencia.objects.filter(tutoria=tutoria).first()
+    grabacion = Grabacion.objects.filter(tutoria=tutoria, esta_activa=True).first()
+    asistencia_completa = asistencia_es_completa(asistencia)
+    realizada_valida = (
+        tutoria.estado == EstadoTutoria.REALIZADA and asistencia_completa
+    )
+    evidencia_validada = bool(evidencia and evidencia.estado == "validada")
+    return {
+        "asistencia": asistencia,
+        "asistencia_completa": asistencia_completa,
+        "realizada_valida": realizada_valida,
+        "grabacion": grabacion,
+        "tiene_grabacion": grabacion is not None,
+        "evidencia": evidencia,
+        "evidencia_validada": evidencia_validada,
+        "completa": realizada_valida and evidencia_validada,
+        "bloqueada": tutoria.estado in {
+            EstadoTutoria.NO_REALIZADA,
+            EstadoTutoria.CANCELADA,
+        },
+    }
+
+
+@transaction.atomic
+def registrar_o_corregir_asistencia(
+    tutoria,
+    *,
+    actor,
+    asistio_tutor,
+    asistio_maestrante,
+    estado_tutoria,
+    observaciones=None,
+    motivo_correccion=None,
+    request=None,
+):
+    tutoria = (
+        Tutoria.objects.select_for_update()
+        .select_related("proyecto__maestrante__programa", "tutor__usuario")
+        .get(pk=tutoria.pk)
+    )
+    asistencia = (
+        AsistenciaTutoria.objects.select_for_update()
+        .filter(tutoria=tutoria)
+        .first()
+    )
+    es_correccion = asistencia is not None
+    if es_correccion:
+        if not usuario_puede_corregir_asistencia(actor, tutoria):
+            raise PermissionDenied(
+                "Solo coordinacion puede corregir una asistencia registrada."
+            )
+        if not str(motivo_correccion or "").strip():
+            raise ValidationError("Debe justificar la correccion de asistencia.")
+    elif not usuario_puede_registrar_asistencia(actor, tutoria):
+        if not (
+            estado_tutoria == EstadoTutoria.CANCELADA
+            and usuario_puede_corregir_asistencia(actor, tutoria)
+        ):
+            raise PermissionDenied(
+                "Solo el tutor asignado registra asistencia; coordinacion puede cancelar."
+            )
+
+    estados_finales = {
+        EstadoTutoria.REALIZADA,
+        EstadoTutoria.NO_REALIZADA,
+        EstadoTutoria.CANCELADA,
+    }
+    if estado_tutoria not in estados_finales:
+        raise ValidationError("Seleccione un estado final valido para la sesion.")
+    if tutoria.estado == EstadoTutoria.CANCELADA and estado_tutoria != tutoria.estado:
+        raise ValidationError("Una tutoria cancelada es un estado terminal.")
+    if estado_tutoria in {EstadoTutoria.REALIZADA, EstadoTutoria.NO_REALIZADA}:
+        if not tutoria_ya_finalizo(tutoria):
+            raise ValidationError("No puede cerrar una tutoria que aun no ha finalizado.")
+    if estado_tutoria == EstadoTutoria.REALIZADA and not (
+        asistio_tutor and asistio_maestrante
+    ):
+        raise ValidationError(
+            "Una tutoria realizada requiere asistencia del tutor y del maestrante."
+        )
+    if estado_tutoria == EstadoTutoria.NO_REALIZADA and (
+        asistio_tutor and asistio_maestrante
+    ):
+        raise ValidationError(
+            "Si ambos participantes asistieron, la sesion no puede quedar no realizada."
+        )
+    if estado_tutoria == EstadoTutoria.CANCELADA and not usuario_puede_corregir_asistencia(
+        actor, tutoria
+    ):
+        raise PermissionDenied("Solo coordinacion puede cancelar una tutoria.")
+    observaciones = str(observaciones or "").strip() or None
+    if estado_tutoria in {EstadoTutoria.NO_REALIZADA, EstadoTutoria.CANCELADA} and not observaciones:
+        raise ValidationError("Explique por que la sesion no se realizo.")
+    if estado_tutoria in {EstadoTutoria.NO_REALIZADA, EstadoTutoria.CANCELADA} and (
+        Evidencia.objects.filter(tutoria=tutoria).exists()
+        or Grabacion.objects.filter(tutoria=tutoria, esta_activa=True).exists()
+    ):
+        raise ValidationError(
+            "La sesion tiene evidencia o grabacion y no puede invalidarse."
+        )
+
+    valores_anteriores = None
+    if asistencia:
+        valores_anteriores = {
+            "asistio_tutor": asistencia.asistio_tutor,
+            "asistio_maestrante": asistencia.asistio_maestrante,
+            "estado": tutoria.estado,
+            "observaciones": asistencia.observaciones,
+        }
+
+    if tutoria.estado == EstadoTutoria.REALIZADA and estado_tutoria != EstadoTutoria.REALIZADA:
+        tutoria.estado = estado_tutoria
+        tutoria.observacion_general = observaciones
+        tutoria.fecha_actualizacion = timezone.now()
+        tutoria.save(update_fields=("estado", "observacion_general", "fecha_actualizacion"))
+
+    if asistencia is None:
+        asistencia = AsistenciaTutoria.objects.create(
+            tutoria=tutoria,
+            asistio_tutor=bool(asistio_tutor),
+            asistio_maestrante=bool(asistio_maestrante),
+            registrado_por=actor,
+            observaciones=observaciones,
+        )
+    else:
+        asistencia.asistio_tutor = bool(asistio_tutor)
+        asistencia.asistio_maestrante = bool(asistio_maestrante)
+        asistencia.registrado_por = actor
+        asistencia.observaciones = observaciones
+        asistencia.fecha_actualizacion = timezone.now()
+        asistencia.save(
+            update_fields=(
+                "asistio_tutor",
+                "asistio_maestrante",
+                "registrado_por",
+                "observaciones",
+                "fecha_actualizacion",
+            )
+        )
+
+    if tutoria.estado != estado_tutoria:
+        tutoria.estado = estado_tutoria
+        tutoria.observacion_general = observaciones
+        tutoria.fecha_actualizacion = timezone.now()
+        tutoria.save(update_fields=("estado", "observacion_general", "fecha_actualizacion"))
+
+    if valores_anteriores:
+        cambio = any(
+            (
+                valores_anteriores["asistio_tutor"] != bool(asistio_tutor),
+                valores_anteriores["asistio_maestrante"] != bool(asistio_maestrante),
+                valores_anteriores["estado"] != estado_tutoria,
+                (valores_anteriores["observaciones"] or "") != (observaciones or ""),
+            )
+        )
+        if not cambio:
+            raise ValidationError("La correccion no contiene ningun cambio.")
+        AsistenciaTutoriaHistorial.objects.create(
+            asistencia=asistencia,
+            tutoria=tutoria,
+            asistio_tutor_anterior=valores_anteriores["asistio_tutor"],
+            asistio_maestrante_anterior=valores_anteriores["asistio_maestrante"],
+            estado_tutoria_anterior=valores_anteriores["estado"],
+            asistio_tutor_nuevo=bool(asistio_tutor),
+            asistio_maestrante_nuevo=bool(asistio_maestrante),
+            estado_tutoria_nuevo=estado_tutoria,
+            observaciones_anteriores=valores_anteriores["observaciones"],
+            observaciones_nuevas=observaciones,
+            motivo_correccion=str(motivo_correccion).strip(),
+            corregido_por=actor,
+        )
+
+    registrar_bitacora(
+        actor,
+        accion=(
+            "corregir_asistencia_tutoria"
+            if es_correccion
+            else (
+                "cancelar_tutoria"
+                if estado_tutoria == EstadoTutoria.CANCELADA
+                else "registrar_asistencia_tutoria"
+            )
+        ),
+        descripcion=f"Asistencia de la tutoria {tutoria.pk}: {estado_tutoria}.",
+        tabla_afectada="asistencias_tutoria",
+        registro_id=asistencia.pk,
+        request=request,
+    )
+    return asistencia
+
+
+@transaction.atomic
+def crear_version_grabacion(tutoria, *, actor, datos, request=None):
+    tutoria = (
+        Tutoria.objects.select_for_update()
+        .select_related("proyecto", "tutor__usuario")
+        .get(pk=tutoria.pk)
+    )
+    estado = obtener_estado_integridad_tutoria(tutoria)
+    if not estado["realizada_valida"]:
+        raise ValidationError(
+            "La grabacion solo puede registrarse para una tutoria realizada con asistencia completa."
+        )
+    activa = (
+        Grabacion.objects.select_for_update()
+        .filter(tutoria=tutoria, esta_activa=True)
+        .first()
+    )
+    if not usuario_puede_gestionar_grabacion(actor, tutoria, reemplazo=bool(activa)):
+        raise PermissionDenied(
+            "Solo el tutor asignado puede registrar o reemplazar la grabacion."
+        )
+    numero = (
+        Grabacion.objects.filter(tutoria=tutoria).aggregate(mayor=Max("numero_version"))["mayor"]
+        or 0
+    ) + 1
+    if activa:
+        activa.esta_activa = False
+        activa.fecha_actualizacion = timezone.now()
+        activa.save(update_fields=("esta_activa", "fecha_actualizacion"))
+    grabacion = Grabacion.objects.create(
+        tutoria=tutoria,
+        tipo_grabacion=datos["tipo_grabacion"],
+        enlace_grabacion=datos.get("enlace_grabacion") or None,
+        ruta_archivo=datos.get("ruta_archivo") or None,
+        nombre_original=datos.get("nombre_original") or None,
+        extension=datos.get("extension") or None,
+        tamano_bytes=datos.get("tamano_bytes") or None,
+        numero_version=numero,
+        esta_activa=True,
+        reemplaza_grabacion=activa,
+        registrado_por=actor,
+    )
+    registrar_bitacora(
+        actor,
+        accion=("reemplazar_grabacion" if activa else "registrar_grabacion"),
+        descripcion=f"Grabacion v{numero} de la tutoria {tutoria.pk}.",
+        tabla_afectada="grabaciones",
+        registro_id=grabacion.pk,
+        request=request,
+    )
+    return grabacion
+
+
 def obtener_proyectos_del_usuario(usuario):
     usuario_sistema = obtener_usuario_sistema(usuario)
     if not usuario_sistema:
@@ -134,20 +433,34 @@ def calcular_progreso_tutorias(proyecto):
     if not proyecto:
         return {
             "total": 0,
+            "programadas": 0,
             "realizadas": 0,
+            "bloqueadas": 0,
             "pendientes": TOTAL_TUTORIAS_REQUERIDAS,
             "porcentaje": 0,
             "cumple": False,
         }
     tutorias = Tutoria.objects.filter(proyecto=proyecto)
     total = tutorias.count()
-    realizadas = tutorias.filter(estado=EstadoTutoria.REALIZADA).count()
+    realizadas = tutorias.filter(
+        estado=EstadoTutoria.REALIZADA,
+        asistencia__asistio_tutor=True,
+        asistencia__asistio_maestrante=True,
+    ).count()
+    programadas = tutorias.filter(
+        estado__in=(EstadoTutoria.PROGRAMADA, EstadoTutoria.REPROGRAMADA)
+    ).count()
+    bloqueadas = tutorias.filter(
+        estado__in=(EstadoTutoria.NO_REALIZADA, EstadoTutoria.CANCELADA)
+    ).count()
     return {
         "total": total,
+        "programadas": programadas,
         "realizadas": realizadas,
+        "bloqueadas": bloqueadas,
         "pendientes": max(TOTAL_TUTORIAS_REQUERIDAS - realizadas, 0),
         "porcentaje": calcular_porcentaje(realizadas, TOTAL_TUTORIAS_REQUERIDAS),
-        "cumple": realizadas >= TOTAL_TUTORIAS_REQUERIDAS,
+        "cumple": realizadas == TOTAL_TUTORIAS_REQUERIDAS,
     }
 
 
@@ -173,7 +486,11 @@ def obtener_asistencias_tutoria(tutoria):
 def obtener_grabaciones_tutoria(tutoria):
     if not tutoria:
         return Grabacion.objects.none()
-    return Grabacion.objects.filter(tutoria=tutoria).select_related("registrado_por")
+    return (
+        Grabacion.objects.filter(tutoria=tutoria)
+        .select_related("registrado_por", "reemplaza_grabacion")
+        .order_by("-esta_activa", "-numero_version", "-fecha_creacion")
+    )
 
 
 def obtener_evidencias_por_usuario(usuario):
@@ -209,7 +526,10 @@ def calcular_progreso_evidencias(proyecto):
         return {
             "total": 0,
             "validadas": 0,
+            "validadas_correspondientes": 0,
             "observadas": 0,
+            "rechazadas": 0,
+            "en_revision": 0,
             "pendientes": TOTAL_EVIDENCIAS_REQUERIDAS,
             "porcentaje": 0,
             "cumple": False,
@@ -217,14 +537,33 @@ def calcular_progreso_evidencias(proyecto):
     evidencias = Evidencia.objects.filter(proyecto=proyecto)
     total = evidencias.count()
     validadas = evidencias.filter(estado="validada").count()
+    validadas_correspondientes = evidencias.filter(
+        estado="validada",
+        tutoria__estado=EstadoTutoria.REALIZADA,
+        tutoria__asistencia__asistio_tutor=True,
+        tutoria__asistencia__asistio_maestrante=True,
+    ).count()
     observadas = evidencias.filter(estado="observada").count()
+    rechazadas = evidencias.filter(estado="rechazada").count()
+    en_revision = evidencias.filter(
+        estado__in=("pendiente", "cargada", "en_revision")
+    ).count()
     return {
         "total": total,
         "validadas": validadas,
+        "validadas_correspondientes": validadas_correspondientes,
         "observadas": observadas,
-        "pendientes": max(TOTAL_EVIDENCIAS_REQUERIDAS - validadas, 0),
-        "porcentaje": calcular_porcentaje(validadas, TOTAL_EVIDENCIAS_REQUERIDAS),
-        "cumple": validadas >= TOTAL_EVIDENCIAS_REQUERIDAS,
+        "rechazadas": rechazadas,
+        "en_revision": en_revision,
+        "pendientes": max(
+            TOTAL_EVIDENCIAS_REQUERIDAS - validadas_correspondientes,
+            0,
+        ),
+        "porcentaje": calcular_porcentaje(
+            validadas_correspondientes,
+            TOTAL_EVIDENCIAS_REQUERIDAS,
+        ),
+        "cumple": validadas_correspondientes == TOTAL_EVIDENCIAS_REQUERIDAS,
     }
 
 
@@ -234,7 +573,10 @@ def obtener_resumen_evidencias_proyecto(proyecto):
     return {
         "total": progreso["total"],
         "validadas": progreso["validadas"],
+        "validadas_correspondientes": progreso["validadas_correspondientes"],
         "observadas": progreso["observadas"],
+        "rechazadas": progreso["rechazadas"],
+        "en_revision": progreso["en_revision"],
         "pendientes": progreso["pendientes"],
         "porcentaje": progreso["porcentaje"],
         "cumple": progreso["cumple"],
@@ -259,17 +601,33 @@ def obtener_historial_evidencia(evidencia):
         .select_related("subido_por")
         .order_by("-numero_version", "-id"),
         "validaciones": ValidacionEvidencia.objects.filter(evidencia=evidencia)
-        .select_related("validado_por")
+        .select_related("validado_por", "evidencia_version")
         .order_by("-fecha_creacion", "-id"),
     }
 
 
-def usuario_puede_subir_evidencia(usuario):
-    return es_maestrante(usuario) and usuario_tiene_permiso(usuario, "EVIDENCIA_SUBIR")
+def usuario_puede_subir_evidencia(usuario, tutoria=None):
+    autorizado = es_maestrante(usuario) and usuario_tiene_permiso(
+        usuario, "EVIDENCIA_SUBIR"
+    )
+    if autorizado and tutoria is not None:
+        autorizado = (
+            tutoria.proyecto.maestrante.usuario_id == usuario.pk
+            and obtener_estado_integridad_tutoria(tutoria)["realizada_valida"]
+        )
+    return autorizado
 
 
-def usuario_puede_validar_evidencia(usuario):
-    return es_tutor(usuario) and usuario_tiene_permiso(usuario, "EVIDENCIA_VALIDAR")
+def usuario_puede_validar_evidencia(usuario, evidencia=None):
+    autorizado = es_tutor(usuario) and usuario_tiene_permiso(
+        usuario, "EVIDENCIA_VALIDAR"
+    )
+    if autorizado and evidencia is not None:
+        autorizado = (
+            evidencia.tutoria.tutor.usuario_id == usuario.pk
+            and usuario_puede_ver_proyecto(usuario, evidencia.proyecto)
+        )
+    return autorizado
 
 
 def usuario_puede_editar_articulo(usuario, proyecto):
@@ -421,26 +779,24 @@ def obtener_checklist_cierre(proyecto):
             "codigo": "EVI-008",
             "nombre": "Ocho evidencias validadas",
             "cumplido": progreso_evidencias["cumple"],
-            "detalle": f'{progreso_evidencias["validadas"]}/8 validadas',
+            "detalle": (
+                f'{progreso_evidencias["validadas_correspondientes"]}/8 '
+                "validadas y vinculadas a sesiones realizadas"
+            ),
         },
     ]
     if regla["requiere_articulo"]:
-        envio_revista = bool(articulo and articulo.fecha_envio_revista)
-        items.extend(
-            (
-                {
-                    "codigo": "ART-100",
-                    "nombre": "Artículo por secciones",
-                    "cumplido": avance_articulo["porcentaje"] == 100,
-                    "detalle": f'{avance_articulo["porcentaje"]}% completo',
-                },
-                {
-                    "codigo": "REV-ENV",
-                    "nombre": "Envío del artículo a revista",
-                    "cumplido": envio_revista,
-                    "detalle": "Envío registrado" if envio_revista else "Pendiente de envío",
-                },
-            )
+        # Nota: el envío/publicación en revista es un trámite externo al CPOS
+        # y ya NO bloquea el cierre del proceso (decisión de negocio Fase 7).
+        # El registro de envío (registrar_envio_revista / EnvioRevistaForm)
+        # se conserva como información opcional para el maestrante.
+        items.append(
+            {
+                "codigo": "ART-100",
+                "nombre": "Artículo por secciones",
+                "cumplido": avance_articulo["porcentaje"] == 100,
+                "detalle": f'{avance_articulo["porcentaje"]}% completo',
+            }
         )
     else:
         items.append(

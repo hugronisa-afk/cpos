@@ -1,0 +1,26 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head"><div><h2>Evaluar entrega · {{ entrega.etapa.nombre }}</h2><p>Proyecto: {{ entrega.proyecto.tema }} · versión {{ entrega.numero_version }}</p></div></div>
+<div class="card">
+  <p><b>Comentario del maestrante:</b> {{ entrega.comentario_maestrante|default:'Sin comentario' }}</p>
+  {% if entrega.archivo %}<p><a class="btn secondary smallbtn" href="{% url 'titulacion:archivo_download' entrega.archivo.pk %}">Descargar archivo</a></p>{% endif %}
+</div>
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    {% for field in form %}
+      <div class="field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {{ field.errors }}
+      </div>
+    {% endfor %}
+    <div class="actions">
+      <button class="btn" type="submit">Registrar resolución</button>
+      <button class="btn secondary" type="button" onclick="history.back()">Cancelar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

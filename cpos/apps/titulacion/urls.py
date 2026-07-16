@@ -51,4 +51,27 @@ urlpatterns = [
     path('modalidades/configuracion/', views.modalidades_configuracion, name='modalidades_configuracion'),
     path('aprobaciones/', views.aprobaciones, name='aprobaciones'),
     path('requerimientos/', views.requerimientos, name='requerimientos'),
+
+    # Fase 7A - Onboarding obligatorio
+    path('onboarding/', views.onboarding_gate, name='onboarding_gate'),
+    path('onboarding/iniciar/', views.onboarding_iniciar, name='onboarding_iniciar'),
+
+    # Fase 7B - Modalidades configuradas y etapas
+    path('modalidades/configuradas/', views.modalidades_configuradas_list, name='modalidades_configuradas_list'),
+    path('modalidades/configuradas/crear/', views.modalidad_configurada_create, name='modalidad_configurada_create'),
+    path('modalidades/configuradas/<int:pk>/editar/', views.modalidad_configurada_update, name='modalidad_configurada_update'),
+    path('modalidades/configuradas/<int:pk>/estado/', views.modalidad_configurada_toggle, name='modalidad_configurada_toggle'),
+    path('modalidades/configuradas/<int:modalidad_pk>/etapas/crear/', views.etapa_producto_create, name='etapa_producto_create'),
+    path('etapas/<int:pk>/editar/', views.etapa_producto_update, name='etapa_producto_update'),
+    path('etapas/<int:pk>/estado/', views.etapa_producto_toggle, name='etapa_producto_toggle'),
+
+    # Fase 7C - Novena tutoria excepcional
+    path('proyectos/<int:proyecto_pk>/novena-tutoria/autorizar/', views.novena_tutoria_autorizar, name='novena_tutoria_autorizar'),
+
+    # Fase 7D - Examen complexivo y escalas de calificacion
+    path('examenes-complexivos/', views.examenes_complexivos_list, name='examenes_complexivos_list'),
+    path('proyectos/<int:proyecto_pk>/examen-complexivo/crear/', views.examen_complexivo_create, name='examen_complexivo_create'),
+    path('examenes-complexivos/<int:pk>/editar/', views.examen_complexivo_update, name='examen_complexivo_update'),
+    path('escalas-calificacion/crear/', views.escala_calificacion_create, name='escala_calificacion_create'),
+    path('escalas-calificacion/<int:pk>/editar/', views.escala_calificacion_update, name='escala_calificacion_update'),
 ]

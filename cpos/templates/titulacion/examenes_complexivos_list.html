@@ -1,0 +1,35 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><h2>Exámenes complexivos</h2><p>Flujo independiente de la modalidad examen complexivo: convocatoria, tribunal, intento y resultado.</p></div>
+  {% if puede_gestionar %}<a class="btn" href="{% url 'titulacion:escala_calificacion_create' %}">Nueva escala de calificación</a>{% endif %}
+</div>
+
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Proyecto</th><th>Convocatoria</th><th>Fecha</th><th>Intento</th><th>Calificación</th><th>Resultado</th><th>Acciones</th></tr></thead>
+    <tbody>
+      {% for examen in examenes %}
+        <tr>
+          <td>{{ examen.proyecto.tema|truncatechars:50 }}</td>
+          <td>{{ examen.convocatoria }}</td>
+          <td>{{ examen.fecha_hora|default:'Sin definir' }}</td>
+          <td>{{ examen.numero_intento }}</td>
+          <td>{% if examen.calificacion %}{{ examen.calificacion }} {% if examen.escala %}/ {{ examen.escala.nota_maxima }}{% endif %}{% else %}—{% endif %}</td>
+          <td>
+            {% if examen.resultado == 'aprobado' %}<span class="badge ok">Aprobado</span>
+            {% elif examen.resultado == 'reprobado' %}<span class="badge danger">Reprobado</span>
+            {% elif examen.resultado == 'no_se_presento' %}<span class="badge warn">No se presentó</span>
+            {% else %}<span class="badge">Pendiente</span>{% endif %}
+          </td>
+          <td>{% if puede_gestionar %}<a class="btn secondary smallbtn" href="{% url 'titulacion:examen_complexivo_update' examen.pk %}">Editar</a>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7"><div class="empty-state">No hay exámenes complexivos registrados.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="tiny">No se usa una escala numérica fija: la calificación se valida contra la escala configurada por programa o modalidad (nota mínima, máxima y de aprobación).</p>
+{% endblock %}

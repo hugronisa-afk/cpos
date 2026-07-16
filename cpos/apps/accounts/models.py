@@ -356,6 +356,10 @@ class Maestrante(models.Model):
         choices=EstadoTitulacion.choices,
         db_default=EstadoTitulacion.SIN_PROYECTO,
     )
+    modulo_actual = models.PositiveSmallIntegerField(
+        db_default=5,
+        help_text="Módulo académico actual del maestrante (elegibilidad de onboarding a partir del módulo 5).",
+    )
     fecha_creacion = models.DateTimeField(db_default=Now(), editable=False)
     fecha_actualizacion = models.DateTimeField(db_default=Now())
 

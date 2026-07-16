@@ -17,9 +17,16 @@ from .forms import (
     ArchivoProyectoForm,
     ArticuloForm,
     AsignacionTutorForm,
+    AutorizacionNovenaTutoriaForm,
     ConfiguracionModalidadProgramaForm,
     DisponibilidadTutorForm,
+    EntregaEtapaForm,
+    EscalaCalificacionForm,
+    EtapaProductoForm,
+    EvaluarEntregaEtapaForm,
+    ExamenComplexivoForm,
     GrabacionForm,
+    ModalidadConfiguradaForm,
     ProyectoForm,
     RegistroTutoriaForm,
     ReprogramacionTutoriaForm,
@@ -28,6 +35,7 @@ from .forms import (
     RevisionArticuloForm,
     RevisionPasoAprobacionForm,
     ResolucionCambioTutorForm,
+    SeleccionModalidadOnboardingForm,
     SolicitudCambioTutorForm,
     SolicitudCambioTemaForm,
     SolicitudCambioModalidadForm,
@@ -40,17 +48,26 @@ from .models import (
     Articulo,
     AsignacionTutor,
     AsistenciaTutoria,
+    AutorizacionNovenaTutoria,
     ConfiguracionModalidadPrograma,
     DisponibilidadTutor,
     DocumentoProcesoAprobacion,
+    EntregaEtapa,
+    EscalaCalificacion,
     EstadoAsignacion,
+    EstadoEtapaProducto,
+    EstadoOnboarding,
     EstadoProyecto,
     EstadoReprogramacion,
     EstadoSolicitudCambioTutor,
     EstadoTutoria,
     EstadoTutor,
+    EtapaProducto,
+    ExamenComplexivo,
     Grabacion,
+    ModalidadConfigurada,
     ModalidadProyecto,
+    OnboardingMaestrante,
     PasoAprobacion,
     ProcesoAprobacion,
     ProyectoTitulacion,
@@ -73,14 +90,26 @@ from .aprobaciones import (
     puede_resolver_paso,
     resolver_paso,
 )
-from .modalidades import obtener_regla_modalidad
+from .modalidades import modalidades_disponibles, obtener_regla_modalidad
 from .services import (
     asignar_tutor,
+    autorizar_novena_tutoria,
+    completar_onboarding,
+    crear_entrega_etapa,
+    etapa_esta_bloqueada,
+    etapas_de_modalidad,
+    evaluar_entrega_etapa,
+    iniciar_onboarding,
+    maestrante_es_elegible_onboarding,
+    modalidades_configuradas_activas,
+    obtener_onboarding_maestrante,
     programar_tutoria,
     obtener_proyecto_visible,
+    puede_autorizar_novena_tutoria,
     puede_crear_proyecto,
     puede_editar_articulo,
     puede_editar_proyecto,
+    puede_evaluar_entrega_etapa,
     puede_gestionar_programacion,
     puede_registrar_sesion,
     puede_revisar_articulo,
@@ -90,6 +119,7 @@ from .services import (
     puede_revisar_cambio_modalidad,
     puede_solicitar_cambio_tema,
     puede_solicitar_cambio_modalidad,
+    puede_subir_entrega_etapa,
     proyectos_visibles,
     registrar_evento,
     registrar_solicitud_aprobacion,
@@ -98,6 +128,7 @@ from .services import (
     resolver_cambio_tutor,
     resumen_evidencias,
     rol_usuario,
+    tiene_autorizacion_novena_tutoria,
     solicitar_cambio_tutor,
     solicitar_reprogramacion,
 )
@@ -305,6 +336,13 @@ def proyecto_detail(request, pk):
             "puede_registrar_resolucion": proyecto_obj.estado == EstadoProyecto.APROBADO and not proyecto_obj.documento_resolucion_url and rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "PROYECTO_RESOLUCION_REGISTRAR"),
             "puede_programar": puede_gestionar_programacion(request.user, proyecto_obj),
             "total_tutorias": proyecto_obj.tutorias.count(),
+            "tiene_novena_autorizada": tiene_autorizacion_novena_tutoria(proyecto_obj),
+            "limite_tutorias": 9 if tiene_autorizacion_novena_tutoria(proyecto_obj) else 8,
+            "puede_autorizar_novena": (
+                proyecto_obj.tutorias.count() >= 8
+                and not tiene_autorizacion_novena_tutoria(proyecto_obj)
+                and puede_autorizar_novena_tutoria(request.user)
+            ),
             "tutorias_vencidas": proyecto_obj.tutorias.filter(
                 fecha__lt=timezone.localdate(),
                 estado__in=[EstadoTutoria.PROGRAMADA, EstadoTutoria.REPROGRAMADA],
@@ -1401,3 +1439,307 @@ def calendario_tutorias(request):
             "active_page": "calendario_tutorias",
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Fase 7A — Onboarding obligatorio del maestrante
+# ---------------------------------------------------------------------------
+
+
+@usuario_activo_required
+@require_http_methods(["GET", "POST"])
+def onboarding_gate(request):
+    _exigir_rol(request, "maestrante")
+    maestrante = getattr(request.user, "perfil_maestrante", None)
+    if not maestrante:
+        raise PermissionDenied("Su cuenta no tiene un expediente de maestrante asociado.")
+
+    onboarding = obtener_onboarding_maestrante(maestrante)
+    elegible = maestrante_es_elegible_onboarding(maestrante)
+
+    if request.method == "POST":
+        if not onboarding:
+            if not elegible:
+                raise PermissionDenied(
+                    "Aún no cumple el módulo mínimo requerido para iniciar el onboarding."
+                )
+            onboarding = iniciar_onboarding(request.user)
+
+        opciones = tuple(
+            (configurada.tipo_modalidad, configurada.nombre)
+            for configurada in modalidades_configuradas_activas(maestrante.programa)
+        ) or modalidades_disponibles(maestrante.programa)
+        formulario = SeleccionModalidadOnboardingForm(request.POST, opciones=opciones)
+        if formulario.is_valid():
+            try:
+                completar_onboarding(request.user, formulario.cleaned_data["modalidad"])
+                registrar_evento(
+                    request,
+                    accion="completar_onboarding",
+                    tabla="onboarding_maestrantes",
+                    registro_id=onboarding.pk,
+                    descripcion="El maestrante completó el onboarding y seleccionó modalidad.",
+                )
+                messages.success(request, "Onboarding completado. Ya puede continuar con su seguimiento.")
+                return redirect("seguimiento:dashboard")
+            except (PermissionDenied, ValidationError) as error:
+                _mensaje_validacion(request, error)
+    else:
+        opciones = tuple(
+            (configurada.tipo_modalidad, configurada.nombre)
+            for configurada in modalidades_configuradas_activas(maestrante.programa)
+        ) or modalidades_disponibles(maestrante.programa)
+        formulario = SeleccionModalidadOnboardingForm(opciones=opciones)
+
+    return render(
+        request,
+        "titulacion/onboarding.html",
+        {
+            "maestrante": maestrante,
+            "onboarding": onboarding,
+            "elegible": elegible,
+            "modulo_minimo": 5,
+            "form": formulario,
+            "page_title": "Onboarding de titulación",
+            "page_subtitle": "Selección obligatoria de modalidad antes de iniciar el seguimiento",
+            "active_page": "onboarding",
+        },
+    )
+
+
+@usuario_activo_required
+@require_POST
+def onboarding_iniciar(request):
+    _exigir_rol(request, "maestrante")
+    try:
+        iniciar_onboarding(request.user)
+    except (PermissionDenied, ValidationError) as error:
+        _mensaje_validacion(request, error)
+    return redirect("titulacion:onboarding_gate")
+
+
+# ---------------------------------------------------------------------------
+# Fase 7B — Modalidades configuradas y sus etapas (supervisor/coordinador/admin)
+# ---------------------------------------------------------------------------
+
+
+@permiso_required("MODALIDAD_CONFIGURAR")
+def modalidades_configuradas_list(request):
+    consulta = ModalidadConfigurada.objects.select_related("programa").order_by(
+        "programa__nombre", "tipo_modalidad"
+    )
+    if rol_usuario(request.user) == "coordinador":
+        consulta = consulta.filter(Q(programa__isnull=True) | Q(programa__coordinador=request.user))
+    return render(
+        request,
+        "titulacion/modalidades_configuradas_list.html",
+        {
+            "modalidades": consulta,
+            "puede_evaluar": False,
+            "page_title": "Modalidades configuradas",
+            "page_subtitle": "Modalidades base y por programa, con sus etapas",
+            "active_page": "modalidades_configuradas",
+        },
+    )
+
+
+@permiso_required("MODALIDAD_CONFIGURAR")
+@require_http_methods(["GET", "POST"])
+def modalidad_configurada_create(request):
+    formulario = ModalidadConfiguradaForm(request.POST or None, usuario=request.user)
+    if request.method == "POST" and formulario.is_valid():
+        modalidad = formulario.save(commit=False)
+        modalidad.creado_por = request.user
+        modalidad.actualizado_por = request.user
+        modalidad.full_clean()
+        modalidad.save()
+        registrar_evento(request, accion="crear_modalidad_configurada", tabla="modalidades_configuradas", registro_id=modalidad.pk, descripcion="Se creó una modalidad configurada.")
+        messages.success(request, "Modalidad creada.")
+        return redirect("titulacion:modalidades_configuradas_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Crear modalidad", "page_title": "Crear modalidad", "active_page": "modalidades_configuradas"})
+
+
+@permiso_required("MODALIDAD_CONFIGURAR")
+@require_http_methods(["GET", "POST"])
+def modalidad_configurada_update(request, pk):
+    modalidad = get_object_or_404(ModalidadConfigurada, pk=pk)
+    formulario = ModalidadConfiguradaForm(request.POST or None, instance=modalidad, usuario=request.user)
+    if request.method == "POST" and formulario.is_valid():
+        modalidad = formulario.save(commit=False)
+        modalidad.actualizado_por = request.user
+        modalidad.full_clean()
+        modalidad.save()
+        registrar_evento(request, accion="editar_modalidad_configurada", tabla="modalidades_configuradas", registro_id=modalidad.pk, descripcion="Se editó una modalidad configurada.")
+        messages.success(request, "Modalidad actualizada.")
+        return redirect("titulacion:modalidades_configuradas_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Editar modalidad", "page_title": "Editar modalidad", "active_page": "modalidades_configuradas"})
+
+
+@permiso_required("MODALIDAD_CONFIGURAR")
+@require_POST
+def modalidad_configurada_toggle(request, pk):
+    """Nunca elimina físicamente: solo activa/desactiva. Expedientes existentes
+    (proyectos ya usando esta modalidad) siguen consultables sin cambios."""
+    modalidad = get_object_or_404(ModalidadConfigurada, pk=pk)
+    modalidad.esta_activa = not modalidad.esta_activa
+    modalidad.actualizado_por = request.user
+    modalidad.save(update_fields=("esta_activa", "actualizado_por", "fecha_actualizacion"))
+    registrar_evento(request, accion="alternar_modalidad_configurada", tabla="modalidades_configuradas", registro_id=modalidad.pk, descripcion=f"Modalidad marcada como {'activa' if modalidad.esta_activa else 'inactiva'}.")
+    messages.success(request, "Estado de la modalidad actualizado.")
+    return redirect("titulacion:modalidades_configuradas_list")
+
+
+@permiso_required("MODALIDAD_CONFIGURAR")
+@require_http_methods(["GET", "POST"])
+def etapa_producto_create(request, modalidad_pk):
+    modalidad = get_object_or_404(ModalidadConfigurada, pk=modalidad_pk)
+    formulario = EtapaProductoForm(request.POST or None, initial={"modalidad": modalidad})
+    if request.method == "POST" and formulario.is_valid():
+        etapa = formulario.save(commit=False)
+        etapa.modalidad = modalidad
+        etapa.full_clean()
+        etapa.save()
+        registrar_evento(request, accion="crear_etapa_producto", tabla="etapas_producto", registro_id=etapa.pk, descripcion=f"Se creó la etapa {etapa.nombre}.")
+        messages.success(request, "Etapa creada.")
+        return redirect("titulacion:modalidades_configuradas_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": f"Nueva etapa · {modalidad.nombre}", "page_title": "Nueva etapa", "active_page": "modalidades_configuradas"})
+
+
+@permiso_required("MODALIDAD_CONFIGURAR")
+@require_http_methods(["GET", "POST"])
+def etapa_producto_update(request, pk):
+    etapa = get_object_or_404(EtapaProducto, pk=pk)
+    formulario = EtapaProductoForm(request.POST or None, instance=etapa)
+    if request.method == "POST" and formulario.is_valid():
+        formulario.save()
+        registrar_evento(request, accion="editar_etapa_producto", tabla="etapas_producto", registro_id=etapa.pk, descripcion=f"Se editó la etapa {etapa.nombre}.")
+        messages.success(request, "Etapa actualizada.")
+        return redirect("titulacion:modalidades_configuradas_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Editar etapa", "page_title": "Editar etapa", "active_page": "modalidades_configuradas"})
+
+
+@permiso_required("MODALIDAD_CONFIGURAR")
+@require_POST
+def etapa_producto_toggle(request, pk):
+    etapa = get_object_or_404(EtapaProducto, pk=pk)
+    etapa.esta_activa = not etapa.esta_activa
+    etapa.save(update_fields=("esta_activa", "fecha_actualizacion"))
+    messages.success(request, "Estado de la etapa actualizado.")
+    return redirect("titulacion:modalidades_configuradas_list")
+
+
+# ---------------------------------------------------------------------------
+# Fase 7C — Autorización de novena tutoría (solo coordinación)
+# ---------------------------------------------------------------------------
+
+
+@permiso_required("NOVENA_TUTORIA_AUTORIZAR")
+@require_http_methods(["GET", "POST"])
+def novena_tutoria_autorizar(request, proyecto_pk):
+    _exigir_rol(request, "coordinador")
+    proyecto = get_object_or_404(ProyectoTitulacion, pk=proyecto_pk)
+    if tiene_autorizacion_novena_tutoria(proyecto):
+        messages.info(request, "Este proyecto ya tiene una novena tutoría autorizada.")
+        return redirect("titulacion:proyecto_detail", pk=proyecto.pk)
+    formulario = AutorizacionNovenaTutoriaForm(request.POST or None)
+    if request.method == "POST" and formulario.is_valid():
+        try:
+            autorizar_novena_tutoria(
+                proyecto, formulario.cleaned_data["motivo"], request.user, request=request
+            )
+            messages.success(request, "Novena tutoría autorizada. Ya puede programarse.")
+            return redirect("titulacion:proyecto_detail", pk=proyecto.pk)
+        except (PermissionDenied, ValidationError) as error:
+            _mensaje_validacion(request, error)
+    return render(
+        request,
+        "titulacion/form.html",
+        {
+            "form": formulario,
+            "titulo": f"Autorizar novena tutoría · {proyecto.tema}",
+            "nota": (
+                "El trigger SQL fase7_validar_novena_tutoria es la garantía final: "
+                "sin esta autorización, la base de datos rechaza cualquier tutoría número 9."
+            ),
+            "page_title": "Autorizar novena tutoría",
+            "active_page": "calendario_tutorias",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fase 7D — Examen complexivo y escala de calificación
+# ---------------------------------------------------------------------------
+
+
+@usuario_activo_required
+def examenes_complexivos_list(request):
+    consulta = ExamenComplexivo.objects.select_related("proyecto", "escala").filter(
+        proyecto__in=proyectos_visibles(request.user)
+    ).order_by("-fecha_creacion")
+    return render(
+        request,
+        "titulacion/examenes_complexivos_list.html",
+        {
+            "examenes": consulta,
+            "puede_gestionar": usuario_tiene_permiso(request.user, "EXAMEN_COMPLEXIVO_GESTIONAR"),
+            "page_title": "Exámenes complexivos",
+            "page_subtitle": "Convocatoria, tribunal y resultado por intento",
+            "active_page": "examenes_complexivos",
+        },
+    )
+
+
+@permiso_required("EXAMEN_COMPLEXIVO_GESTIONAR")
+@require_http_methods(["GET", "POST"])
+def examen_complexivo_create(request, proyecto_pk):
+    _exigir_rol(request, "coordinador")
+    proyecto = get_object_or_404(ProyectoTitulacion, pk=proyecto_pk)
+    formulario = ExamenComplexivoForm(request.POST or None)
+    if request.method == "POST" and formulario.is_valid():
+        examen = formulario.save(commit=False)
+        examen.proyecto = proyecto
+        examen.registrado_por = request.user
+        examen.full_clean()
+        examen.save()
+        registrar_evento(request, accion="crear_examen_complexivo", tabla="examenes_complexivos", registro_id=examen.pk, descripcion="Se registró un intento de examen complexivo.")
+        messages.success(request, "Examen complexivo registrado.")
+        return redirect("titulacion:examenes_complexivos_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": f"Registrar examen · {proyecto.tema}", "page_title": "Registrar examen complexivo", "active_page": "examenes_complexivos"})
+
+
+@permiso_required("EXAMEN_COMPLEXIVO_GESTIONAR")
+@require_http_methods(["GET", "POST"])
+def examen_complexivo_update(request, pk):
+    _exigir_rol(request, "coordinador")
+    examen = get_object_or_404(ExamenComplexivo, pk=pk)
+    formulario = ExamenComplexivoForm(request.POST or None, instance=examen)
+    if request.method == "POST" and formulario.is_valid():
+        formulario.save()
+        registrar_evento(request, accion="editar_examen_complexivo", tabla="examenes_complexivos", registro_id=examen.pk, descripcion="Se actualizó el examen complexivo.")
+        messages.success(request, "Examen complexivo actualizado.")
+        return redirect("titulacion:examenes_complexivos_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Editar examen complexivo", "page_title": "Editar examen complexivo", "active_page": "examenes_complexivos"})
+
+
+@permiso_required("ESCALA_CALIFICACION_CONFIGURAR")
+@require_http_methods(["GET", "POST"])
+def escala_calificacion_create(request):
+    formulario = EscalaCalificacionForm(request.POST or None)
+    if request.method == "POST" and formulario.is_valid():
+        formulario.save()
+        messages.success(request, "Escala de calificación creada.")
+        return redirect("titulacion:examenes_complexivos_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Nueva escala de calificación", "nota": "Evita usar una calificación numérica sin una escala configurada por programa o modalidad.", "page_title": "Nueva escala", "active_page": "examenes_complexivos"})
+
+
+@permiso_required("ESCALA_CALIFICACION_CONFIGURAR")
+@require_http_methods(["GET", "POST"])
+def escala_calificacion_update(request, pk):
+    escala = get_object_or_404(EscalaCalificacion, pk=pk)
+    formulario = EscalaCalificacionForm(request.POST or None, instance=escala)
+    if request.method == "POST" and formulario.is_valid():
+        formulario.save()
+        messages.success(request, "Escala de calificación actualizada.")
+        return redirect("titulacion:examenes_complexivos_list")
+    return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Editar escala de calificación", "page_title": "Editar escala", "active_page": "examenes_complexivos"})
