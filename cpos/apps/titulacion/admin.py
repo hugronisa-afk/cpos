@@ -6,11 +6,18 @@ from .models import (
     Articulo,
     AsignacionTutor,
     AsistenciaTutoria,
+    DocumentoProcesoAprobacion,
+    DisponibilidadTutor,
     Grabacion,
+    PasoAprobacion,
+    ProcesoAprobacion,
     ProyectoTitulacion,
     ReprogramacionTutoria,
     SolicitudCambioTema,
+    SolicitudCambioModalidad,
+    SolicitudCambioTutor,
     Tutor,
+    TutorPrograma,
     Tutoria,
 )
 
@@ -47,4 +54,11 @@ admin.site.register(ReprogramacionTutoria)
 admin.site.register(ArchivoProyecto)
 admin.site.register(Grabacion)
 admin.site.register(SolicitudCambioTema)
+admin.site.register(SolicitudCambioModalidad)
 admin.site.register(Aprobacion)
+admin.site.register(ProcesoAprobacion)
+admin.site.register(PasoAprobacion)
+admin.site.register(DocumentoProcesoAprobacion)
+admin.site.register(TutorPrograma)
+admin.site.register(DisponibilidadTutor)
+admin.site.register(SolicitudCambioTutor)

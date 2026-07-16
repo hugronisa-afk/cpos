@@ -1,15 +1,136 @@
 {% extends 'titulacion/base_titulacion.html' %}
 
 {% block titulacion_content %}
-<div class="page-head"><div><h2>{{ proyecto.tema }}</h2><p>{{ proyecto.maestrante.usuario.nombre_completo }} · {{ proyecto.get_modalidad_display }} · <span class="badge">{{ proyecto.get_estado_display }}</span></p></div><div class="actions">{% if puede_editar %}<a class="btn secondary" href="{% url 'titulacion:proyecto_update' proyecto.pk %}">Editar</a><form method="post" action="{% url 'titulacion:proyecto_enviar' proyecto.pk %}">{% csrf_token %}<button class="btn" type="submit">Enviar a revisión</button></form>{% endif %}{% if puede_revisar or puede_aprobar %}<a class="btn" href="{% url 'titulacion:proyecto_revisar' proyecto.pk %}">Revisar</a>{% endif %}</div></div>
-<div class="grid cols-3">
-  <div class="card"><h3>Proyecto</h3><p><b>Estado:</b> {{ proyecto.get_estado_display }}</p><p><b>Resolución:</b> {{ proyecto.numero_resolucion|default:'No registrada' }}</p>{% if proyecto.documento_resolucion_url %}<p><a href="{% url 'titulacion:resolucion_download' proyecto.pk %}">Descargar resolución</a></p>{% endif %}<p><b>Observaciones:</b> {{ proyecto.observaciones|default:'Sin observaciones' }}</p>{% if puede_registrar_resolucion %}<a class="btn secondary" href="{% url 'titulacion:proyecto_resolucion' proyecto.pk %}">Registrar resolución</a>{% endif %}</div>
-  <div class="card"><h3>Tutor</h3>{% if asignacion %}<p>{{ asignacion.tutor.usuario.nombre_completo }}</p><p>{{ asignacion.tutor.especialidad|default:'Sin especialidad registrada' }}</p>{% else %}<p>Sin tutor asignado.</p>{% endif %}{% if puede_asignar %}<a class="btn secondary" href="{% url 'titulacion:asignacion_create' proyecto.pk %}">{% if asignacion %}Cambiar tutor{% else %}Asignar tutor{% endif %}</a>{% endif %}</div>
-  <div class="card"><h3>Evidencias</h3>{% if evidencias.integrado %}<p>{{ evidencias.validadas }}/{{ evidencias.total }} validadas.</p>{% else %}<span class="badge warn">Pendiente de Seguimiento</span><p class="small">Sin datos simulados ni modelos duplicados.</p>{% endif %}</div>
+<div class="page-head">
+  <div>
+    <h2>{{ proyecto.tema }}</h2>
+    <p>{{ proyecto.maestrante.usuario.nombre_completo }} · {{ regla_modalidad.nombre }} · <span class="badge">{{ proyecto.get_estado_display }}</span></p>
+  </div>
+  <div class="actions">
+    {% if puede_editar %}
+      <a class="btn secondary" href="{% url 'titulacion:proyecto_update' proyecto.pk %}">Editar borrador</a>
+      <form method="post" action="{% url 'titulacion:proyecto_enviar' proyecto.pk %}">{% csrf_token %}<button class="btn" type="submit">Enviar Word y PDF a revisión</button></form>
+    {% endif %}
+    {% if puede_revisar or puede_aprobar %}<a class="btn" href="{% url 'titulacion:proyecto_revisar' proyecto.pk %}">Revisar</a>{% endif %}
+  </div>
 </div>
-<div class="card" style="margin-top:18px"><div class="page-head"><div><h3>Tutorías</h3></div>{% if puede_programar %}<a class="btn" href="{% url 'titulacion:tutoria_create' proyecto.pk %}">Programar</a>{% endif %}</div><div class="table-wrap"><table class="table"><thead><tr><th>N.º</th><th>Fecha</th><th>Tutor</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{% for item in tutorias %}<tr><td>{{ item.numero_tutoria }}</td><td>{{ item.fecha }} {{ item.hora_inicio }}</td><td>{{ item.tutor.usuario.nombre_completo }}</td><td>{{ item.get_estado_display }}</td><td>{% if rol_actual == 'tutor' or rol_actual == 'coordinador' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:tutoria_registrar' item.pk %}">Registrar</a>{% endif %}{% if rol_actual != 'supervisor' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:reprogramacion_create' item.pk %}">Reprogramar</a>{% endif %}{% if rol_actual == 'tutor' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:grabacion_create' item.pk %}">Grabación</a>{% endif %}</td></tr>{% for grabacion in item.grabaciones.all %}<tr><td colspan="5"><b>Grabación:</b> {% if grabacion.tipo_grabacion == 'archivo' %}<a href="{% url 'titulacion:grabacion_download' grabacion.pk %}">{{ grabacion.nombre_original|default:'Descargar archivo' }}</a>{% else %}<a href="{% url 'titulacion:grabacion_enlace' grabacion.pk %}" target="_blank" rel="noopener noreferrer">Abrir enlace</a>{% endif %}</td></tr>{% endfor %}{% for solicitud in item.reprogramaciones.all %}{% if solicitud.estado == 'pendiente' and rol_actual == 'coordinador' %}<tr><td colspan="5"><b>Reprogramación pendiente:</b> {{ solicitud.fecha_nueva }} {{ solicitud.hora_inicio_nueva }} · {{ solicitud.motivo }} <form method="post" action="{% url 'titulacion:reprogramacion_resolver' solicitud.pk %}" style="display:inline">{% csrf_token %}<button class="btn smallbtn" name="decision" value="aprobar">Aprobar</button><button class="btn secondary smallbtn" name="decision" value="rechazar">Rechazar</button></form></td></tr>{% endif %}{% endfor %}{% empty %}<tr><td colspan="5">No hay tutorías.</td></tr>{% endfor %}</tbody></table></div></div>
+
+{% if proceso_actual %}
+<div class="alert info" style="margin-bottom:18px">
+  <b>Proceso formal en curso:</b> {{ proceso_actual.get_tipo_display }} · versión {{ proceso_actual.numero_version }} · etapa {{ proceso_actual.paso_actual }}.
+  <a href="{% url 'titulacion:proceso_aprobacion_detail' proceso_actual.pk %}">Abrir expediente de revisión</a>
+</div>
+{% elif proyecto.estado == 'observado' %}
+<div class="alert warn" style="margin-bottom:18px">El proyecto fue devuelto para corrección. Suba las nuevas versiones Word y PDF y reenvíe; el sistema conservará la revisión anterior.</div>
+{% endif %}
+
+<div class="grid cols-3">
+  <div class="card">
+    <h3>Proyecto</h3>
+    <p><b>Estado:</b> {{ proyecto.get_estado_display }}</p>
+    <p><b>Resolución:</b> {{ proyecto.numero_resolucion|default:'No registrada' }}</p>
+    {% if proyecto.documento_resolucion_url %}<p><a href="{% url 'titulacion:resolucion_download' proyecto.pk %}">Descargar resolución</a></p>{% endif %}
+    <p><b>Observaciones:</b> {{ proyecto.observaciones|default:'Sin observaciones' }}</p>
+    {% if puede_registrar_resolucion %}<a class="btn secondary" href="{% url 'titulacion:proyecto_resolucion' proyecto.pk %}">Registrar resolución</a>{% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Modalidad: {{ regla_modalidad.nombre }}</h3>
+    <p>{{ regla_modalidad.descripcion }}</p>
+    <p><b>Producto final:</b> {{ regla_modalidad.producto_final_nombre }}</p>
+    <p><b>Seguimiento:</b> {{ regla_modalidad.total_tutorias }} tutorías y {{ regla_modalidad.total_evidencias }} evidencias validadas.</p>
+    {% if puede_editar %}
+      <span class="badge ok">Editable antes de aprobación</span>
+    {% else %}
+      <span class="badge warn">Modalidad bloqueada</span>
+    {% endif %}
+    {% if puede_cambio_modalidad %}<p><a class="btn secondary smallbtn" href="{% url 'titulacion:cambio_modalidad_create' proyecto.pk %}">Solicitar cambio</a></p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Tutor y evidencias</h3>
+    {% if asignacion %}<p><b>Tutor:</b> {{ asignacion.tutor.usuario.nombre_completo }}</p><p>{{ asignacion.tutor.especialidad|default:'Sin especialidad registrada' }}</p>{% else %}<p>Sin tutor asignado.</p>{% endif %}
+    {% if puede_asignar %}<a class="btn secondary" href="{% url 'titulacion:asignacion_create' proyecto.pk %}">Asignar tutor</a>{% endif %}
+    {% if puede_solicitar_cambio_tutor %}<a class="btn secondary" href="{% url 'titulacion:cambio_tutor_create' proyecto.pk %}">Solicitar cambio</a>{% endif %}
+    {% if evidencias.integrado %}<p><b>Evidencias:</b> {{ evidencias.validadas }}/{{ regla_modalidad.total_evidencias }} validadas.</p>{% else %}<span class="badge warn">Seguimiento sin resumen</span>{% endif %}
+  </div>
+</div>
+
 <div class="grid cols-2" style="margin-top:18px">
-  <div class="card"><div class="page-head"><div><h3>Archivos del proyecto</h3></div>{% if puede_subir_archivo %}<a class="btn secondary" href="{% url 'titulacion:archivo_create' proyecto.pk %}">Subir archivo</a>{% endif %}</div>{% for archivo in archivos %}<div style="margin-bottom:14px"><p><a href="{% url 'titulacion:archivo_download' archivo.pk %}">{{ archivo.nombre_original }}</a> · {{ archivo.get_tipo_archivo_display }} · {{ archivo.tamano_bytes }} bytes</p>{% if archivo.aprobacion_actual %}<span class="badge">{{ archivo.aprobacion_actual.get_estado_display }}</span>{% if archivo.aprobacion_actual.observaciones %}<p class="small">{{ archivo.aprobacion_actual.observaciones }}</p>{% endif %}{% endif %}{% if rol_actual == 'tutor' or rol_actual == 'coordinador' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:archivo_revisar' archivo.pk %}">Revisar</a>{% endif %}</div>{% empty %}<p>No hay archivos registrados.</p>{% endfor %}</div>
-  <div class="card"><div class="page-head"><div><h3>Cambios de tema</h3></div>{% if puede_cambio_tema %}<a class="btn secondary" href="{% url 'titulacion:cambio_tema_create' proyecto.pk %}">Solicitar</a>{% endif %}</div>{% for cambio in cambios_tema %}<p><b>{{ cambio.get_estado_display }}:</b> {{ cambio.tema_propuesto }}</p>{% if puede_revisar_cambio_tema and cambio.estado == 'pendiente' %}<form method="post" action="{% url 'titulacion:cambio_tema_resolver' cambio.pk %}">{% csrf_token %}<button class="btn smallbtn" name="decision" value="aprobar">Aprobar</button><button class="btn secondary smallbtn" name="decision" value="rechazar">Rechazar</button></form>{% endif %}{% empty %}<p>No hay solicitudes.</p>{% endfor %}</div>
+  <div class="card">
+    <h3>Historial de tutores</h3>
+    {% for item in asignaciones_tutor %}<p><b>{{ item.tutor.usuario.nombre_completo }}</b> · {{ item.get_estado_display }} · {{ item.fecha_asignacion|date:'d/m/Y' }}{% if item.motivo_cambio %}<span class="small"> · {{ item.motivo_cambio }}</span>{% endif %}</p>{% empty %}<p>No existen asignaciones.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h3>Solicitudes de cambio de tutor</h3>
+    {% for cambio in cambios_tutor %}
+      <p><b>{{ cambio.asignacion_actual.tutor.usuario.nombre_completo }} → {{ cambio.tutor_propuesto.usuario.nombre_completo }}</b> · <span class="badge">{{ cambio.get_estado_display }}</span></p>
+      <p class="small">{{ cambio.motivo }}</p>
+      {% if cambio.observaciones_resolucion %}<p class="small"><b>Decisión:</b> {{ cambio.observaciones_resolucion }}</p>{% endif %}
+      {% if cambio.estado == 'pendiente' and puede_resolver_cambio_tutor %}<a class="btn secondary smallbtn" href="{% url 'titulacion:cambio_tutor_resolver' cambio.pk %}">Resolver</a>{% endif %}
+    {% empty %}<p>No existen solicitudes.</p>{% endfor %}
+  </div>
+</div>
+
+{% if regla_modalidad.requiere_articulo %}
+<div class="card" style="margin-top:18px">
+  <div class="page-head"><div><h3>Artículo científico</h3><p>Este bloque solo aplica a la modalidad seleccionada.</p></div>{% if rol_actual == 'maestrante' %}<a class="btn" href="{% url 'titulacion:articulo_edit' proyecto.pk %}">Editar artículo</a>{% endif %}</div>
+  {% for articulo in articulos %}<p><b>{{ articulo.titulo|default:'Artículo sin título' }}</b> · {{ articulo.porcentaje_avance }}% · {{ articulo.get_estado_display }}</p>{% empty %}<p>Aún no se ha iniciado el artículo.</p>{% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:18px">
+  <div class="page-head"><div><h3>Tutorías · {{ total_tutorias }}/8</h3><p>Solo se permiten ocho sesiones numeradas, dentro de la disponibilidad y sin cruces.</p></div>{% if puede_programar and total_tutorias < 8 %}<a class="btn" href="{% url 'titulacion:tutoria_create' proyecto.pk %}">Programar siguiente</a>{% endif %}</div>
+  {% if tutorias_vencidas %}<div class="alert warn">Existen {{ tutorias_vencidas }} tutorías con fecha vencida que aún figuran como programadas. Coordinación o el tutor deben registrar su resultado; el sistema no modifica automáticamente el historial académico.</div>{% endif %}
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>N.º</th><th>Fecha</th><th>Tutor</th><th>Estado</th><th>Acciones</th></tr></thead>
+    <tbody>
+    {% for item in tutorias %}
+      <tr><td>{{ item.numero_tutoria }}</td><td>{{ item.fecha }} {{ item.hora_inicio }}</td><td>{{ item.tutor.usuario.nombre_completo }}</td><td>{{ item.get_estado_display }}</td><td>{% if rol_actual == 'tutor' or rol_actual == 'coordinador' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:tutoria_registrar' item.pk %}">Registrar</a>{% endif %}{% if rol_actual != 'supervisor' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:reprogramacion_create' item.pk %}">Reprogramar</a>{% endif %}{% if rol_actual == 'tutor' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:grabacion_create' item.pk %}">Grabación</a>{% endif %}</td></tr>
+      {% for grabacion in item.grabaciones.all %}<tr><td colspan="5"><b>Grabación:</b> {% if grabacion.tipo_grabacion == 'archivo' %}<a href="{% url 'titulacion:grabacion_download' grabacion.pk %}">{{ grabacion.nombre_original|default:'Descargar archivo' }}</a>{% else %}<a href="{% url 'titulacion:grabacion_enlace' grabacion.pk %}" target="_blank" rel="noopener noreferrer">Abrir enlace</a>{% endif %}</td></tr>{% endfor %}
+      {% for solicitud in item.reprogramaciones.all %}{% if solicitud.estado == 'pendiente' and rol_actual == 'coordinador' %}<tr><td colspan="5"><b>Reprogramación pendiente:</b> {{ solicitud.fecha_nueva }} {{ solicitud.hora_inicio_nueva }} · {{ solicitud.motivo }} <a class="btn secondary smallbtn" href="{% url 'titulacion:reprogramacion_resolver' solicitud.pk %}">Resolver</a></td></tr>{% endif %}{% endfor %}
+    {% empty %}<tr><td colspan="5">No hay tutorías.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="grid cols-2" style="margin-top:18px">
+  <div class="card">
+    <div class="page-head"><div><h3>Archivos del proyecto</h3><p>Para enviar a revisión son obligatorios un Word editable y su PDF. Durante la revisión quedan bloqueadas nuevas cargas.</p></div>{% if puede_subir_archivo %}<a class="btn secondary" href="{% url 'titulacion:archivo_create' proyecto.pk %}">Subir documento</a>{% endif %}</div>
+    {% for archivo in archivos %}
+      <div style="margin-bottom:14px"><p><a href="{% url 'titulacion:archivo_download' archivo.pk %}">{{ archivo.nombre_original }}</a> · {{ archivo.get_tipo_archivo_display }} · {{ archivo.tamano_bytes }} bytes</p>{% if archivo.aprobacion_actual %}<span class="badge">{{ archivo.aprobacion_actual.get_estado_display }}</span>{% if archivo.aprobacion_actual.observaciones %}<p class="small">{{ archivo.aprobacion_actual.observaciones }}</p>{% endif %}{% endif %}{% if rol_actual == 'tutor' or rol_actual == 'coordinador' %}<a class="btn secondary smallbtn" href="{% url 'titulacion:archivo_revisar' archivo.pk %}">Revisar</a>{% endif %}</div>
+    {% empty %}<p>No hay archivos registrados.</p>{% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="page-head"><div><h3>Cambios de tema</h3></div>{% if puede_cambio_tema %}<a class="btn secondary" href="{% url 'titulacion:cambio_tema_create' proyecto.pk %}">Solicitar</a>{% endif %}</div>
+    {% for cambio in cambios_tema %}<p><b>{{ cambio.get_estado_display }}:</b> {{ cambio.tema_propuesto }}</p><p class="small">{{ cambio.justificacion }}</p>{% empty %}<p>No hay solicitudes.</p>{% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <div class="page-head"><div><h3>Historial de modalidad</h3><p>Cada solicitud conserva la modalidad anterior, la propuesta, la justificación y la decisión.</p></div>{% if puede_cambio_modalidad %}<a class="btn secondary" href="{% url 'titulacion:cambio_modalidad_create' proyecto.pk %}">Solicitar cambio</a>{% endif %}</div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Fecha</th><th>Cambio</th><th>Justificación</th><th>Estado</th><th>Decisión</th></tr></thead>
+    <tbody>
+    {% for cambio in cambios_modalidad %}
+      <tr>
+        <td>{{ cambio.fecha_creacion|date:"d/m/Y H:i" }}</td>
+        <td>{{ cambio.get_modalidad_actual_display }} → {{ cambio.get_modalidad_propuesta_display }}</td>
+        <td>{{ cambio.justificacion }}</td>
+        <td><span class="badge">{{ cambio.get_estado_display }}</span></td>
+        <td>{{ cambio.observaciones_resolucion|default:'Consultar el proceso formal asociado' }}</td>
+      </tr>
+    {% empty %}<tr><td colspan="5">No existen cambios de modalidad.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Versiones y procesos de aprobación</h3>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Inicio</th><th>Tipo</th><th>Versión</th><th>Estado</th><th>Etapa</th><th>Acción</th></tr></thead>
+    <tbody>{% for proceso in procesos_aprobacion %}<tr><td>{{ proceso.fecha_creacion|date:"d/m/Y H:i" }}</td><td>{{ proceso.get_tipo_display }}</td><td>{{ proceso.numero_version }}</td><td><span class="badge">{{ proceso.get_estado_display }}</span></td><td>{{ proceso.paso_actual }}</td><td><a class="btn secondary smallbtn" href="{% url 'titulacion:proceso_aprobacion_detail' proceso.pk %}">Ver decisiones</a></td></tr>{% empty %}<tr><td colspan="6">No existen procesos formales.</td></tr>{% endfor %}</tbody>
+  </table></div>
 </div>
 {% endblock %}

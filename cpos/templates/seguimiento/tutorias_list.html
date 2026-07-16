@@ -29,14 +29,14 @@
         <tbody>
           {% for tutoria in tutorias %}
             <tr>
-              <td>{{ tutoria.numero|default:tutoria.id }}</td>
+              <td>{{ tutoria.numero_tutoria|default:tutoria.id }}</td>
               <td>{{ tutoria.fecha|date:"d/m/Y"|default:"Sin fecha" }}</td>
               <td>
                 {{ tutoria.hora_inicio|time:"H:i"|default:"--" }}
                 -
                 {{ tutoria.hora_fin|time:"H:i"|default:"--" }}
               </td>
-              <td>{{ tutoria.tema|default:"Sin tema" }}</td>
+              <td>{{ tutoria.proyecto.tema|default:"Sin tema" }}</td>
               <td>
                 {% if tutoria.tutor %}
                   {{ tutoria.tutor }}

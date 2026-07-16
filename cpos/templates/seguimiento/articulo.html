@@ -1,0 +1,48 @@
+{% extends 'layouts/app.html' %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Artículo científico</h2>
+    <p>{{ proyecto.tema|default:"Proyecto sin tema" }}</p>
+  </div>
+  <a class="btn secondary" href="{% url 'seguimiento:dashboard' %}">Volver</a>
+</div>
+
+<div class="grid cols-3">
+  <div class="card">
+    <span class="small">Avance</span>
+    <div class="metric">{{ avance_articulo.porcentaje }}%</div>
+    <p>{{ avance_articulo.secciones_completas }}/{{ avance_articulo.total_secciones }} secciones completas</p>
+  </div>
+  <div class="card">
+    <span class="small">Estado</span>
+    <div class="metric">{% if articulo %}{{ articulo.get_estado_display }}{% else %}Sin iniciar{% endif %}</div>
+  </div>
+  <div class="card">
+    <span class="small">Envío a revista</span>
+    <div class="metric">{% if articulo.fecha_envio_revista %}{{ articulo.fecha_envio_revista|date:"d/m/Y" }}{% else %}Pendiente{% endif %}</div>
+    {% if puede_editar and articulo and avance_articulo.porcentaje == 100 %}
+      <a class="btn smallbtn" href="{% url 'seguimiento:registrar_envio_revista' proyecto.id %}">Registrar envío</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h3>Contenido del artículo</h3>
+  <div class="timeline">
+    {% for item in avance_articulo.detalle %}
+      <div class="item">
+        <div class="page-head" style="margin-bottom:8px">
+          <div>
+            <h4>{{ item.seccion|title }}</h4>
+            {% if item.completa %}<span class="badge ok">Completa</span>{% else %}<span class="badge warn">Pendiente</span>{% endif %}
+          </div>
+          {% if puede_editar %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:editar_seccion_articulo' proyecto.id item.seccion %}">Editar</a>{% endif %}
+        </div>
+        <p>{{ item.contenido|default:"Esta sección todavía no tiene contenido."|linebreaksbr }}</p>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

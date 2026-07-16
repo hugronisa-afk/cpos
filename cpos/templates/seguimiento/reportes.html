@@ -49,7 +49,7 @@
             {% for tutoria in tutorias_pendientes %}
               <tr>
                 <td>{{ tutoria.fecha|date:"d/m/Y"|default:"Sin fecha" }}</td>
-                <td>{{ tutoria.tema|default:"Sin tema" }}</td>
+                <td>{{ tutoria.proyecto.tema|default:"Sin tema" }}</td>
                 <td><span class="badge warn">{{ tutoria.estado }}</span></td>
               </tr>
             {% endfor %}
@@ -79,7 +79,7 @@
               <tr>
                 <td>{{ evidencia.titulo|default:"Sin título" }}</td>
                 <td>{{ evidencia.tipo_avance }}</td>
-                <td>{{ evidencia.fecha_carga|date:"d/m/Y"|default:"Sin fecha" }}</td>
+                <td>{{ evidencia.fecha_creacion|date:"d/m/Y"|default:"Sin fecha" }}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -108,7 +108,7 @@
         <tbody>
           {% for item in avance_por_proyecto %}
             <tr>
-              <td>{{ item.proyecto.titulo|default:"Sin título" }}</td>
+              <td>{{ item.proyecto.tema|default:"Sin título" }}</td>
               <td>{{ item.progreso_tutorias.realizadas }}/8</td>
               <td>{{ item.progreso_evidencias.validadas }}/8</td>
               <td>

@@ -1,19 +1,24 @@
+from datetime import date
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Avg, Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from urllib.parse import urlparse
 from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.accounts.decorators import permiso_required, usuario_activo_required
+from apps.accounts.models import Programa
 from apps.accounts.services import usuario_tiene_permiso
 
 from .forms import (
     ArchivoProyectoForm,
     ArticuloForm,
     AsignacionTutorForm,
+    ConfiguracionModalidadProgramaForm,
+    DisponibilidadTutorForm,
     GrabacionForm,
     ProyectoForm,
     RegistroTutoriaForm,
@@ -21,8 +26,11 @@ from .forms import (
     ResolucionProyectoForm,
     RevisionArchivoForm,
     RevisionArticuloForm,
-    RevisionProyectoForm,
+    RevisionPasoAprobacionForm,
+    ResolucionCambioTutorForm,
+    SolicitudCambioTutorForm,
     SolicitudCambioTemaForm,
+    SolicitudCambioModalidadForm,
     TutorForm,
     TutoriaForm,
 )
@@ -32,22 +40,44 @@ from .models import (
     Articulo,
     AsignacionTutor,
     AsistenciaTutoria,
+    ConfiguracionModalidadPrograma,
+    DisponibilidadTutor,
+    DocumentoProcesoAprobacion,
     EstadoAsignacion,
     EstadoProyecto,
     EstadoReprogramacion,
+    EstadoSolicitudCambioTutor,
+    EstadoTutoria,
     EstadoTutor,
     Grabacion,
+    ModalidadProyecto,
+    PasoAprobacion,
+    ProcesoAprobacion,
     ProyectoTitulacion,
     ReprogramacionTutoria,
+    SolicitudCambioTutor,
     SolicitudCambioTema,
+    SolicitudCambioModalidad,
     Tutor,
+    TutorPrograma,
     Tutoria,
+    TipoProcesoAprobacion,
+    TipoDocumentoAprobacion,
 )
+from .aprobaciones import (
+    iniciar_proceso_cambio,
+    iniciar_revision_proyecto,
+    obtener_proceso_visible,
+    proceso_activo_proyecto,
+    procesos_visibles,
+    puede_resolver_paso,
+    resolver_paso,
+)
+from .modalidades import obtener_regla_modalidad
 from .services import (
     asignar_tutor,
-    enviar_proyecto_revision,
+    programar_tutoria,
     obtener_proyecto_visible,
-    puede_aprobar_proyecto,
     puede_crear_proyecto,
     puede_editar_articulo,
     puede_editar_proyecto,
@@ -55,18 +85,21 @@ from .services import (
     puede_registrar_sesion,
     puede_revisar_articulo,
     puede_revisar_archivo,
+    puede_solicitar_cambio_tutor,
     puede_revisar_cambio_tema,
-    puede_revisar_proyecto,
+    puede_revisar_cambio_modalidad,
     puede_solicitar_cambio_tema,
+    puede_solicitar_cambio_modalidad,
     proyectos_visibles,
     registrar_evento,
     registrar_solicitud_aprobacion,
-    resolver_cambio_tema,
     resolver_revision_archivo,
     resolver_reprogramacion,
-    resolver_revision_proyecto,
+    resolver_cambio_tutor,
     resumen_evidencias,
     rol_usuario,
+    solicitar_cambio_tutor,
+    solicitar_reprogramacion,
 )
 from .storage import (
     ErrorAlmacenamiento,
@@ -92,7 +125,30 @@ def _mensaje_validacion(request, error):
 
 
 def _consulta_tutores():
-    return Tutor.objects.select_related("usuario", "usuario__rol")
+    return Tutor.objects.select_related("usuario", "usuario__rol").prefetch_related(
+        "vinculos_programa__programa", "disponibilidades"
+    ).annotate(
+        carga_activa=Count(
+            "asignaciones",
+            filter=Q(asignaciones__estado=EstadoAsignacion.ACTIVO),
+            distinct=True,
+        )
+    )
+
+
+def _tutores_visibles(usuario):
+    consulta = _consulta_tutores()
+    rol = rol_usuario(usuario)
+    if rol == "coordinador":
+        return consulta.filter(
+            vinculos_programa__programa__coordinador_id=usuario.pk,
+            vinculos_programa__esta_activo=True,
+        ).distinct()
+    if rol == "supervisor":
+        return consulta
+    if rol == "tutor":
+        return consulta.filter(usuario_id=usuario.pk)
+    return consulta.none()
 
 
 @usuario_activo_required
@@ -177,7 +233,34 @@ def proyecto(request):
 @usuario_activo_required
 def proyecto_detail(request, pk):
     proyecto_obj = obtener_proyecto_visible(request.user, pk)
+    regla_modalidad = obtener_regla_modalidad(
+        proyecto_obj.maestrante.programa,
+        proyecto_obj.modalidad,
+    )
     asignacion = proyecto_obj.asignaciones_tutor.select_related("tutor__usuario").filter(estado=EstadoAsignacion.ACTIVO).first()
+    asignaciones_tutor = proyecto_obj.asignaciones_tutor.select_related(
+        "tutor__usuario", "asignado_por"
+    ).all()
+    cambios_tutor = proyecto_obj.solicitudes_cambio_tutor.select_related(
+        "asignacion_actual__tutor__usuario",
+        "tutor_propuesto__usuario",
+        "solicitado_por",
+        "resuelto_por",
+    ).all()
+    procesos = list(
+        proyecto_obj.procesos_aprobacion.select_related("creado_por")
+        .prefetch_related("pasos__resuelto_por", "documentos__archivo")
+        .all()
+    )
+    proceso_actual = next(
+        (item for item in procesos if item.estado == "en_curso"),
+        None,
+    )
+    paso_actual = (
+        proceso_actual.pasos.filter(estado="activo").first()
+        if proceso_actual
+        else None
+    )
     archivos = list(proyecto_obj.archivos.select_related("subido_por").all())
     decisiones_archivos = Aprobacion.objects.filter(
         proyecto=proyecto_obj,
@@ -196,19 +279,43 @@ def proyecto_detail(request, pk):
         {
             "proyecto": proyecto_obj,
             "asignacion": asignacion,
+            "asignaciones_tutor": asignaciones_tutor,
+            "cambios_tutor": cambios_tutor,
             "tutorias": proyecto_obj.tutorias.select_related("tutor__usuario").prefetch_related("grabaciones", "reprogramaciones").all(),
             "archivos": archivos,
             "articulos": proyecto_obj.articulos.filter(esta_activo=True),
             "cambios_tema": proyecto_obj.solicitudes_cambio_tema.select_related("solicitado_por").all(),
+            "cambios_modalidad": proyecto_obj.solicitudes_cambio_modalidad.select_related(
+                "solicitado_por", "resuelto_por"
+            ).all(),
+            "regla_modalidad": regla_modalidad,
+            "procesos_aprobacion": procesos,
+            "proceso_actual": proceso_actual,
+            "paso_actual": paso_actual,
             "puede_editar": puede_editar_proyecto(request.user, proyecto_obj),
-            "puede_revisar": proyecto_obj.estado == EstadoProyecto.EN_REVISION and puede_revisar_proyecto(request.user, proyecto_obj),
-            "puede_aprobar": proyecto_obj.estado == EstadoProyecto.EN_REVISION and puede_aprobar_proyecto(request.user, proyecto_obj),
-            "puede_asignar": proyecto_obj.estado == EstadoProyecto.APROBADO and rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "ASIGNACION_TUTOR_CREAR"),
-            "puede_registrar_resolucion": proyecto_obj.estado == EstadoProyecto.APROBADO and rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "PROYECTO_APROBAR"),
+            "puede_revisar": bool(
+                paso_actual and puede_resolver_paso(request.user, paso_actual)
+            ),
+            "puede_aprobar": False,
+            "puede_asignar": not asignacion and proyecto_obj.estado == EstadoProyecto.APROBADO and rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "ASIGNACION_TUTOR_CREAR"),
+            "puede_solicitar_cambio_tutor": puede_solicitar_cambio_tutor(
+                request.user, proyecto_obj
+            ),
+            "puede_resolver_cambio_tutor": rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "CAMBIO_TUTOR_GESTIONAR"),
+            "puede_registrar_resolucion": proyecto_obj.estado == EstadoProyecto.APROBADO and not proyecto_obj.documento_resolucion_url and rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "PROYECTO_RESOLUCION_REGISTRAR"),
             "puede_programar": puede_gestionar_programacion(request.user, proyecto_obj),
-            "puede_subir_archivo": rol_usuario(request.user) == "maestrante" and proyecto_obj.maestrante.usuario_id == request.user.pk and usuario_tiene_permiso(request.user, "ARCHIVO_SUBIR"),
-            "puede_cambio_tema": puede_solicitar_cambio_tema(request.user, proyecto_obj),
+            "total_tutorias": proyecto_obj.tutorias.count(),
+            "tutorias_vencidas": proyecto_obj.tutorias.filter(
+                fecha__lt=timezone.localdate(),
+                estado__in=[EstadoTutoria.PROGRAMADA, EstadoTutoria.REPROGRAMADA],
+            ).count(),
+            "puede_subir_archivo": puede_editar_proyecto(request.user, proyecto_obj) and usuario_tiene_permiso(request.user, "ARCHIVO_SUBIR"),
+            "puede_cambio_tema": not proceso_actual and puede_solicitar_cambio_tema(request.user, proyecto_obj),
             "puede_revisar_cambio_tema": puede_revisar_cambio_tema(request.user, proyecto_obj),
+            "puede_cambio_modalidad": not proceso_actual and puede_solicitar_cambio_modalidad(request.user, proyecto_obj),
+            "puede_revisar_cambio_modalidad": puede_revisar_cambio_modalidad(
+                request.user, proyecto_obj
+            ),
             "evidencias": resumen_evidencias(proyecto_obj),
             "rol_actual": rol_usuario(request.user),
             "page_title": "Detalle del proyecto",
@@ -223,7 +330,10 @@ def proyecto_detail(request, pk):
 def proyecto_create(request):
     if not puede_crear_proyecto(request.user):
         raise PermissionDenied("No puede crear otro proyecto de titulación.")
-    formulario = ProyectoForm(request.POST or None)
+    formulario = ProyectoForm(
+        request.POST or None,
+        programa=request.user.perfil_maestrante.programa,
+    )
     if request.method == "POST" and formulario.is_valid():
         with transaction.atomic():
             proyecto_obj = formulario.save(commit=False)
@@ -245,7 +355,11 @@ def proyecto_update(request, pk):
     proyecto_obj = obtener_proyecto_visible(request.user, pk)
     if not puede_editar_proyecto(request.user, proyecto_obj):
         raise PermissionDenied("El proyecto no es editable en su estado actual.")
-    formulario = ProyectoForm(request.POST or None, instance=proyecto_obj)
+    formulario = ProyectoForm(
+        request.POST or None,
+        instance=proyecto_obj,
+        programa=proyecto_obj.maestrante.programa,
+    )
     if request.method == "POST" and formulario.is_valid():
         proyecto_obj = formulario.save(commit=False)
         proyecto_obj.actualizado_por = request.user
@@ -261,31 +375,24 @@ def proyecto_update(request, pk):
 def proyecto_enviar(request, pk):
     proyecto_obj = obtener_proyecto_visible(request.user, pk)
     try:
-        enviar_proyecto_revision(proyecto_obj, request.user, request)
-        messages.success(request, "Proyecto enviado a revisión.")
+        proceso = iniciar_revision_proyecto(proyecto_obj, request.user, request)
+        messages.success(
+            request,
+            f"Proyecto enviado a revisión formal, versión {proceso.numero_version}.",
+        )
     except (PermissionDenied, ValidationError) as error:
         _mensaje_validacion(request, error)
     return redirect("titulacion:proyecto_detail", pk=pk)
 
 
 @usuario_activo_required
-@require_http_methods(["GET", "POST"])
+@require_http_methods(["GET"])
 def proyecto_revisar(request, pk):
     proyecto_obj = obtener_proyecto_visible(request.user, pk)
-    if not (puede_revisar_proyecto(request.user, proyecto_obj) or puede_aprobar_proyecto(request.user, proyecto_obj)):
-        raise PermissionDenied("No puede revisar este proyecto.")
-    formulario = RevisionProyectoForm(
-        request.POST or None,
-        puede_aprobar=puede_aprobar_proyecto(request.user, proyecto_obj),
-    )
-    if request.method == "POST" and formulario.is_valid():
-        try:
-            resolver_revision_proyecto(proyecto_obj, request.user, formulario.cleaned_data["estado"], formulario.cleaned_data["observaciones"], request)
-            messages.success(request, "Revisión registrada.")
-            return redirect("titulacion:proyecto_detail", pk=pk)
-        except (PermissionDenied, ValidationError) as error:
-            _mensaje_validacion(request, error)
-    return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Revisar proyecto", "page_title": "Revisar proyecto", "active_page": "proyecto"})
+    proceso = proceso_activo_proyecto(proyecto_obj)
+    if not proceso:
+        raise PermissionDenied("El proyecto no tiene una revisión formal activa.")
+    return redirect("titulacion:proceso_aprobacion_detail", pk=proceso.pk)
 
 
 @usuario_activo_required
@@ -295,7 +402,8 @@ def proyecto_resolucion(request, pk):
     if not (
         rol_usuario(request.user) == "coordinador"
         and proyecto_obj.estado == EstadoProyecto.APROBADO
-        and usuario_tiene_permiso(request.user, "PROYECTO_APROBAR")
+        and not proyecto_obj.documento_resolucion_url
+        and usuario_tiene_permiso(request.user, "PROYECTO_RESOLUCION_REGISTRAR")
     ):
         raise PermissionDenied("Solo coordinación puede registrar la resolución.")
     formulario = ResolucionProyectoForm(
@@ -305,7 +413,7 @@ def proyecto_resolucion(request, pk):
     )
     if request.method == "POST" and formulario.is_valid():
         referencia_nueva = None
-        referencia_anterior = proyecto_obj.documento_resolucion_url
+        datos = None
         try:
             documento = formulario.cleaned_data.get("documento_resolucion")
             if documento:
@@ -323,6 +431,26 @@ def proyecto_resolucion(request, pk):
                     proyecto_obj.documento_resolucion_url = referencia_nueva
                 proyecto_obj.actualizado_por = request.user
                 proyecto_obj.save()
+                archivo_resolucion = ArchivoProyecto.objects.create(
+                    proyecto=proyecto_obj,
+                    tipo_archivo="resolucion",
+                    nombre_original=documento.name,
+                    ruta_archivo=datos["referencia"],
+                    extension=datos["extension"],
+                    tamano_bytes=datos["tamano_bytes"],
+                    subido_por=request.user,
+                )
+                proceso_aprobado = ProcesoAprobacion.objects.filter(
+                    proyecto=proyecto_obj,
+                    tipo=TipoProcesoAprobacion.PROYECTO,
+                    estado="aprobado",
+                ).order_by("-fecha_finalizacion", "-id").first()
+                if proceso_aprobado:
+                    DocumentoProcesoAprobacion.objects.update_or_create(
+                        proceso=proceso_aprobado,
+                        tipo_documento=TipoDocumentoAprobacion.RESOLUCION,
+                        defaults={"archivo": archivo_resolucion},
+                    )
                 registrar_evento(request, accion="registrar_resolucion", tabla="proyectos_titulacion", registro_id=pk, descripcion="Se registró la resolución del proyecto.")
         except ErrorAlmacenamiento as error:
             messages.error(request, str(error))
@@ -331,8 +459,6 @@ def proyecto_resolucion(request, pk):
             if referencia_nueva:
                 eliminar_archivo(referencia_nueva)
             raise
-        if referencia_nueva and referencia_anterior:
-            eliminar_archivo(referencia_anterior)
         messages.success(request, "Resolución registrada.")
         return redirect("titulacion:proyecto_detail", pk=pk)
     return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Registrar resolución", "page_title": "Resolución", "active_page": "proyecto"})
@@ -345,7 +471,7 @@ def asignacion_create(request, pk):
     _exigir_rol(request, "coordinador")
     if proyecto_obj.estado != EstadoProyecto.APROBADO:
         raise PermissionDenied("El proyecto debe estar aprobado antes de asignar tutor.")
-    formulario = AsignacionTutorForm(request.POST or None)
+    formulario = AsignacionTutorForm(request.POST or None, proyecto=proyecto_obj)
     if request.method == "POST" and formulario.is_valid():
         try:
             asignar_tutor(proyecto_obj, formulario.cleaned_data["tutor"], request.user, formulario.cleaned_data.get("motivo_cambio"), request)
@@ -358,9 +484,100 @@ def asignacion_create(request, pk):
 
 @usuario_activo_required
 @require_http_methods(["GET", "POST"])
+def cambio_tutor_create(request, proyecto_pk):
+    proyecto_obj = obtener_proyecto_visible(request.user, proyecto_pk)
+    if not puede_solicitar_cambio_tutor(request.user, proyecto_obj):
+        raise PermissionDenied("No puede solicitar un cambio de tutor.")
+    asignacion = proyecto_obj.asignaciones_tutor.select_related(
+        "tutor__usuario"
+    ).get(estado=EstadoAsignacion.ACTIVO)
+    formulario = SolicitudCambioTutorForm(
+        request.POST or None,
+        proyecto=proyecto_obj,
+        asignacion_actual=asignacion,
+    )
+    if request.method == "POST" and formulario.is_valid():
+        try:
+            solicitar_cambio_tutor(
+                proyecto_obj,
+                formulario.cleaned_data["tutor_propuesto"],
+                formulario.cleaned_data["motivo"],
+                request.user,
+                request,
+            )
+        except (PermissionDenied, ValidationError) as error:
+            formulario.add_error(None, error)
+        else:
+            messages.success(request, "Solicitud de cambio de tutor registrada.")
+            return redirect("titulacion:proyecto_detail", pk=proyecto_pk)
+    return render(
+        request,
+        "titulacion/cambio_tutor_form.html",
+        {
+            "form": formulario,
+            "proyecto": proyecto_obj,
+            "asignacion": asignacion,
+            "page_title": "Solicitar cambio de tutor",
+            "active_page": "proyecto",
+        },
+    )
+
+
+@usuario_activo_required
+@require_http_methods(["GET", "POST"])
+def cambio_tutor_resolver(request, pk):
+    solicitud = get_object_or_404(
+        SolicitudCambioTutor.objects.select_related(
+            "proyecto__maestrante__programa",
+            "asignacion_actual__tutor__usuario",
+            "tutor_propuesto__usuario",
+            "solicitado_por",
+        ),
+        pk=pk,
+        proyecto__in=proyectos_visibles(request.user),
+    )
+    if (
+        rol_usuario(request.user) != "coordinador"
+        or not usuario_tiene_permiso(request.user, "CAMBIO_TUTOR_GESTIONAR")
+    ):
+        raise PermissionDenied("No puede resolver este cambio de tutor.")
+    formulario = ResolucionCambioTutorForm(request.POST or None)
+    if request.method == "POST" and formulario.is_valid():
+        try:
+            resolver_cambio_tutor(
+                solicitud,
+                request.user,
+                formulario.cleaned_data["decision"] == "aprobar",
+                formulario.cleaned_data.get("observaciones"),
+                request,
+            )
+        except (PermissionDenied, ValidationError) as error:
+            formulario.add_error(None, error)
+        else:
+            messages.success(request, "Solicitud de cambio de tutor resuelta.")
+            return redirect(
+                "titulacion:proyecto_detail", pk=solicitud.proyecto_id
+            )
+    return render(
+        request,
+        "titulacion/cambio_tutor_resolver.html",
+        {
+            "form": formulario,
+            "solicitud": solicitud,
+            "page_title": "Resolver cambio de tutor",
+            "active_page": "proyecto",
+        },
+    )
+
+
+@usuario_activo_required
+@require_http_methods(["GET", "POST"])
 def archivo_create(request, pk):
     proyecto_obj = obtener_proyecto_visible(request.user, pk)
-    if not (rol_usuario(request.user) == "maestrante" and proyecto_obj.maestrante.usuario_id == request.user.pk and usuario_tiene_permiso(request.user, "ARCHIVO_SUBIR")):
+    if not (
+        puede_editar_proyecto(request.user, proyecto_obj)
+        and usuario_tiene_permiso(request.user, "ARCHIVO_SUBIR")
+    ):
         raise PermissionDenied("No puede registrar archivos en este proyecto.")
     formulario = ArchivoProyectoForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and formulario.is_valid():
@@ -454,16 +671,24 @@ def tutoria_create(request, pk):
     if not asignacion:
         messages.error(request, "Asigne un tutor antes de programar tutorías.")
         return redirect("titulacion:proyecto_detail", pk=pk)
-    formulario = TutoriaForm(request.POST or None)
-    if request.method == "POST" and formulario.is_valid():
-        tutoria = formulario.save(commit=False)
-        tutoria.proyecto = proyecto_obj
-        tutoria.tutor = asignacion.tutor
-        tutoria.programada_por = request.user
-        tutoria.save()
-        registrar_evento(request, accion="programar_tutoria", tabla="tutorias", registro_id=tutoria.pk, descripcion=f"Se programó la tutoría {tutoria.numero_tutoria}.")
-        messages.success(request, "Tutoría programada.")
+    if proyecto_obj.tutorias.count() >= 8:
+        messages.info(request, "El proyecto ya tiene las ocho tutorías programadas.")
         return redirect("titulacion:proyecto_detail", pk=pk)
+    formulario = TutoriaForm(request.POST or None, proyecto=proyecto_obj)
+    if request.method == "POST" and formulario.is_valid():
+        try:
+            programar_tutoria(
+                proyecto_obj,
+                asignacion.tutor,
+                formulario.cleaned_data,
+                request.user,
+                request,
+            )
+        except (PermissionDenied, ValidationError) as error:
+            formulario.add_error(None, error)
+        else:
+            messages.success(request, "Tutoría programada.")
+            return redirect("titulacion:proyecto_detail", pk=pk)
     return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Programar tutoría", "page_title": "Programar tutoría", "active_page": "proyecto"})
 
 
@@ -500,38 +725,60 @@ def reprogramacion_create(request, pk):
     tutoria = get_object_or_404(Tutoria.objects.select_related("proyecto", "tutor__usuario"), pk=pk, proyecto__in=proyectos_visibles(request.user))
     if rol_usuario(request.user) not in {"maestrante", "tutor", "coordinador"}:
         raise PermissionDenied("No puede solicitar una reprogramación.")
-    formulario = ReprogramacionTutoriaForm(request.POST or None)
+    formulario = ReprogramacionTutoriaForm(request.POST or None, tutoria=tutoria)
     if request.method == "POST" and formulario.is_valid():
-        reprogramacion = formulario.save(commit=False)
-        reprogramacion.tutoria = tutoria
-        reprogramacion.fecha_anterior = tutoria.fecha
-        reprogramacion.hora_inicio_anterior = tutoria.hora_inicio
-        reprogramacion.hora_fin_anterior = tutoria.hora_fin
-        reprogramacion.solicitado_por = request.user
-        reprogramacion.save()
-        registrar_solicitud_aprobacion(
-            proyecto=tutoria.proyecto,
-            tipo="reprogramacion",
-            tabla="reprogramaciones_tutoria",
-            registro_id=reprogramacion.pk,
-        )
-        registrar_evento(request, accion="solicitar_reprogramacion", tabla="reprogramaciones_tutoria", registro_id=reprogramacion.pk, descripcion="Se solicitó reprogramar una tutoría.")
-        messages.success(request, "Solicitud de reprogramación registrada.")
-        return redirect("titulacion:proyecto_detail", pk=tutoria.proyecto_id)
+        try:
+            solicitar_reprogramacion(
+                tutoria,
+                formulario.cleaned_data,
+                request.user,
+                request,
+            )
+        except (PermissionDenied, ValidationError) as error:
+            formulario.add_error(None, error)
+        else:
+            messages.success(request, "Solicitud de reprogramación registrada.")
+            return redirect("titulacion:proyecto_detail", pk=tutoria.proyecto_id)
     return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Solicitar reprogramación", "page_title": "Reprogramar tutoría", "active_page": "proyecto"})
 
 
 @usuario_activo_required
-@require_POST
+@require_http_methods(["GET", "POST"])
 def reprogramacion_resolver(request, pk):
     reprogramacion = get_object_or_404(ReprogramacionTutoria.objects.select_related("tutoria__proyecto"), pk=pk, tutoria__proyecto__in=proyectos_visibles(request.user))
-    aprobar = request.POST.get("decision") == "aprobar"
-    try:
-        resolver_reprogramacion(reprogramacion, request.user, aprobar, request)
-        messages.success(request, "Reprogramación resuelta.")
-    except (PermissionDenied, ValidationError) as error:
-        _mensaje_validacion(request, error)
-    return redirect("titulacion:proyecto_detail", pk=reprogramacion.tutoria.proyecto_id)
+    if (
+        rol_usuario(request.user) != "coordinador"
+        or not usuario_tiene_permiso(request.user, "REPROGRAMACION_GESTIONAR")
+    ):
+        raise PermissionDenied("No puede resolver esta reprogramación.")
+    formulario = ResolucionCambioTutorForm(request.POST or None)
+    if request.method == "POST" and formulario.is_valid():
+        try:
+            resolver_reprogramacion(
+                reprogramacion,
+                request.user,
+                formulario.cleaned_data["decision"] == "aprobar",
+                request,
+                formulario.cleaned_data.get("observaciones"),
+            )
+        except (PermissionDenied, ValidationError) as error:
+            formulario.add_error(None, error)
+        else:
+            messages.success(request, "Reprogramación resuelta.")
+            return redirect(
+                "titulacion:proyecto_detail",
+                pk=reprogramacion.tutoria.proyecto_id,
+            )
+    return render(
+        request,
+        "titulacion/reprogramacion_resolver.html",
+        {
+            "form": formulario,
+            "reprogramacion": reprogramacion,
+            "page_title": "Resolver reprogramación",
+            "active_page": "proyecto",
+        },
+    )
 
 
 @usuario_activo_required
@@ -617,7 +864,9 @@ def resolucion_download(request, pk):
 
 @usuario_activo_required
 def articulo(request):
-    proyectos = proyectos_visibles(request.user)
+    proyectos = proyectos_visibles(request.user).filter(
+        modalidad=ModalidadProyecto.ARTICULO
+    )
     articulos = Articulo.objects.select_related("proyecto", "proyecto__maestrante__usuario").filter(proyecto__in=proyectos, esta_activo=True)
     return render(request, "titulacion/articulo.html", {"articulos": articulos, "proyectos": proyectos, "rol_actual": rol_usuario(request.user), "page_title": "Artículos", "page_subtitle": "Artículos visibles para su rol", "active_page": "articulo"})
 
@@ -628,7 +877,9 @@ def articulo_edit(request, proyecto_pk):
     proyecto_obj = obtener_proyecto_visible(request.user, proyecto_pk)
     articulo_obj = proyecto_obj.articulos.filter(esta_activo=True).first()
     if not puede_editar_articulo(request.user, proyecto_obj):
-        raise PermissionDenied("No puede editar el artículo de este proyecto.")
+        raise PermissionDenied(
+            "Este proyecto no usa artículo científico o no puede editarlo."
+        )
     formulario = ArticuloForm(request.POST or None, instance=articulo_obj)
     if request.method == "POST" and formulario.is_valid():
         articulo_obj = formulario.save(commit=False)
@@ -663,20 +914,24 @@ def cambio_tema_create(request, proyecto_pk):
         raise PermissionDenied("No puede solicitar un cambio de tema.")
     formulario = SolicitudCambioTemaForm(request.POST or None)
     if request.method == "POST" and formulario.is_valid():
-        solicitud = formulario.save(commit=False)
-        solicitud.proyecto = proyecto_obj
-        solicitud.tema_actual = proyecto_obj.tema
-        solicitud.solicitado_por = request.user
-        solicitud.save()
-        registrar_solicitud_aprobacion(
-            proyecto=proyecto_obj,
-            tipo="cambio_tema",
-            tabla="solicitudes_cambio_tema",
-            registro_id=solicitud.pk,
-        )
-        registrar_evento(request, accion="solicitar_cambio_tema", tabla="solicitudes_cambio_tema", registro_id=solicitud.pk, descripcion="Se solicitó un cambio de tema.")
-        messages.success(request, "Solicitud de cambio de tema registrada.")
-        return redirect("titulacion:proyecto_detail", pk=proyecto_pk)
+        try:
+            with transaction.atomic():
+                solicitud = formulario.save(commit=False)
+                solicitud.proyecto = proyecto_obj
+                solicitud.tema_actual = proyecto_obj.tema
+                solicitud.solicitado_por = request.user
+                solicitud.save()
+                proceso = iniciar_proceso_cambio(
+                    solicitud,
+                    TipoProcesoAprobacion.CAMBIO_TEMA,
+                    request.user,
+                    request,
+                )
+        except (PermissionDenied, ValidationError) as error:
+            formulario.add_error(None, error)
+        else:
+            messages.success(request, "Solicitud enviada al proceso formal de aprobación.")
+            return redirect("titulacion:proceso_aprobacion_detail", pk=proceso.pk)
     return render(request, "titulacion/form.html", {"form": formulario, "titulo": "Solicitar cambio de tema", "page_title": "Cambio de tema", "active_page": "proyecto"})
 
 
@@ -684,21 +939,173 @@ def cambio_tema_create(request, proyecto_pk):
 @require_POST
 def cambio_tema_resolver(request, pk):
     solicitud = get_object_or_404(SolicitudCambioTema.objects.select_related("proyecto"), pk=pk, proyecto__in=proyectos_visibles(request.user))
-    if not puede_revisar_cambio_tema(request.user, solicitud.proyecto):
-        raise PermissionDenied("No puede resolver esta solicitud.")
-    try:
-        resolver_cambio_tema(solicitud, request.user, request.POST.get("decision") == "aprobar", request)
-        messages.success(request, "Solicitud de cambio de tema resuelta.")
-    except (PermissionDenied, ValidationError) as error:
-        _mensaje_validacion(request, error)
-    return redirect("titulacion:proyecto_detail", pk=solicitud.proyecto_id)
+    proceso = ProcesoAprobacion.objects.filter(
+        tipo=TipoProcesoAprobacion.CAMBIO_TEMA,
+        referencia_tabla="solicitudes_cambio_tema",
+        referencia_id=solicitud.pk,
+    ).order_by("-fecha_creacion").first()
+    if not proceso:
+        raise PermissionDenied("La solicitud no tiene un proceso formal asociado.")
+    return redirect("titulacion:proceso_aprobacion_detail", pk=proceso.pk)
+
+
+@usuario_activo_required
+@require_http_methods(["GET", "POST"])
+def cambio_modalidad_create(request, proyecto_pk):
+    proyecto_obj = obtener_proyecto_visible(request.user, proyecto_pk)
+    if not puede_solicitar_cambio_modalidad(request.user, proyecto_obj):
+        raise PermissionDenied("No puede solicitar un cambio de modalidad.")
+    formulario = SolicitudCambioModalidadForm(
+        request.POST or None,
+        proyecto=proyecto_obj,
+    )
+    if request.method == "POST" and formulario.is_valid():
+        try:
+            with transaction.atomic():
+                solicitud = formulario.save(commit=False)
+                solicitud.proyecto = proyecto_obj
+                solicitud.modalidad_actual = proyecto_obj.modalidad
+                solicitud.solicitado_por = request.user
+                solicitud.save()
+                proceso = iniciar_proceso_cambio(
+                    solicitud,
+                    TipoProcesoAprobacion.CAMBIO_MODALIDAD,
+                    request.user,
+                    request,
+                )
+        except (PermissionDenied, ValidationError) as error:
+            formulario.add_error(None, error)
+        else:
+            messages.success(request, "Solicitud enviada al proceso formal de aprobación.")
+            return redirect("titulacion:proceso_aprobacion_detail", pk=proceso.pk)
+    return render(
+        request,
+        "titulacion/form.html",
+        {
+            "form": formulario,
+            "titulo": "Solicitar cambio de modalidad",
+            "page_title": "Cambio de modalidad",
+            "active_page": "proyecto",
+        },
+    )
+
+
+@usuario_activo_required
+@require_POST
+def cambio_modalidad_resolver(request, pk):
+    solicitud = get_object_or_404(
+        SolicitudCambioModalidad.objects.select_related(
+            "proyecto", "proyecto__maestrante__programa"
+        ),
+        pk=pk,
+        proyecto__in=proyectos_visibles(request.user),
+    )
+    proceso = ProcesoAprobacion.objects.filter(
+        tipo=TipoProcesoAprobacion.CAMBIO_MODALIDAD,
+        referencia_tabla="solicitudes_cambio_modalidad",
+        referencia_id=solicitud.pk,
+    ).order_by("-fecha_creacion").first()
+    if not proceso:
+        raise PermissionDenied("La solicitud no tiene un proceso formal asociado.")
+    return redirect("titulacion:proceso_aprobacion_detail", pk=proceso.pk)
+
+
+@usuario_activo_required
+def proceso_aprobacion_detail(request, pk):
+    proceso = obtener_proceso_visible(request.user, pk)
+    pasos = list(proceso.pasos.select_related("resuelto_por").all())
+    documentos = proceso.documentos.select_related("archivo").all()
+    paso_actual = next((paso for paso in pasos if paso.estado == "activo"), None)
+    puede_resolver = bool(
+        paso_actual and puede_resolver_paso(request.user, paso_actual)
+    )
+    formulario = (
+        RevisionPasoAprobacionForm(
+            permite_observar=proceso.tipo == TipoProcesoAprobacion.PROYECTO
+        )
+        if puede_resolver
+        else None
+    )
+    solicitud = None
+    if proceso.tipo == TipoProcesoAprobacion.CAMBIO_TEMA:
+        solicitud = SolicitudCambioTema.objects.filter(pk=proceso.referencia_id).first()
+    elif proceso.tipo == TipoProcesoAprobacion.CAMBIO_MODALIDAD:
+        solicitud = SolicitudCambioModalidad.objects.filter(pk=proceso.referencia_id).first()
+    return render(
+        request,
+        "titulacion/proceso_aprobacion_detail.html",
+        {
+            "proceso": proceso,
+            "pasos": pasos,
+            "documentos": documentos,
+            "paso_actual": paso_actual,
+            "puede_resolver": puede_resolver,
+            "form": formulario,
+            "solicitud": solicitud,
+            "rol_actual": rol_usuario(request.user),
+            "page_title": "Proceso de aprobación",
+            "page_subtitle": proceso.get_tipo_display(),
+            "active_page": "aprobaciones",
+        },
+    )
+
+
+@usuario_activo_required
+@require_POST
+def paso_aprobacion_resolver(request, pk):
+    paso = get_object_or_404(
+        PasoAprobacion.objects.select_related(
+            "proceso",
+            "proceso__proyecto__maestrante__programa",
+        ),
+        pk=pk,
+        proceso__in=procesos_visibles(request.user),
+    )
+    if not puede_resolver_paso(request.user, paso):
+        raise PermissionDenied("No puede resolver esta etapa.")
+    formulario = RevisionPasoAprobacionForm(
+        request.POST,
+        permite_observar=paso.proceso.tipo == TipoProcesoAprobacion.PROYECTO,
+    )
+    if formulario.is_valid():
+        try:
+            proceso = resolver_paso(
+                paso,
+                request.user,
+                formulario.cleaned_data["decision"],
+                formulario.cleaned_data["observaciones"],
+                request,
+            )
+        except (PermissionDenied, ValidationError) as error:
+            _mensaje_validacion(request, error)
+        else:
+            messages.success(request, "Etapa de aprobación resuelta.")
+            return redirect("titulacion:proceso_aprobacion_detail", pk=proceso.pk)
+    else:
+        for errores in formulario.errors.values():
+            for error in errores:
+                messages.error(request, error)
+    return redirect("titulacion:proceso_aprobacion_detail", pk=paso.proceso_id)
 
 
 @usuario_activo_required
 def aprobaciones(request):
-    proyectos = proyectos_visibles(request.user)
-    consulta = Aprobacion.objects.select_related("proyecto", "proyecto__maestrante__usuario", "aprobado_por").filter(proyecto__in=proyectos)
-    return render(request, "titulacion/aprobaciones.html", {"aprobaciones": consulta, "pendientes": consulta.filter(estado="pendiente").count(), "aprobadas": consulta.filter(estado="aprobado").count(), "rechazadas": consulta.filter(estado="rechazado").count(), "rol_actual": rol_usuario(request.user), "page_title": "Aprobaciones", "page_subtitle": "Historial real de decisiones", "active_page": "aprobaciones"})
+    consulta = procesos_visibles(request.user).prefetch_related("pasos")
+    return render(
+        request,
+        "titulacion/aprobaciones.html",
+        {
+            "procesos": consulta,
+            "pendientes": consulta.filter(estado="en_curso").count(),
+            "aprobadas": consulta.filter(estado="aprobado").count(),
+            "observadas": consulta.filter(estado="observado").count(),
+            "rechazadas": consulta.filter(estado="rechazado").count(),
+            "rol_actual": rol_usuario(request.user),
+            "page_title": "Aprobaciones",
+            "page_subtitle": "Procesos formales y decisiones por etapa",
+            "active_page": "aprobaciones",
+        },
+    )
 
 
 @usuario_activo_required
@@ -706,10 +1113,72 @@ def requerimientos(request):
     return render(request, "titulacion/requerimientos.html", {"page_title": "Requerimientos", "page_subtitle": "Requerimientos del módulo", "active_page": "requerimientos"})
 
 
+@permiso_required("MODALIDAD_CONFIGURAR")
+@require_http_methods(["GET", "POST"])
+def modalidades_configuracion(request):
+    _exigir_rol(request, "coordinador", "administrador_desarrollador")
+    programas = Programa.objects.filter(estado="activo")
+    if rol_usuario(request.user) == "coordinador":
+        programas = programas.filter(coordinador=request.user)
+    programas = programas.order_by("nombre")
+
+    programa_id = request.POST.get("programa") or request.GET.get("programa")
+    programa_obj = (
+        programas.filter(pk=programa_id).first()
+        if str(programa_id or "").isdigit()
+        else programas.first()
+    )
+    configuracion = (
+        ConfiguracionModalidadPrograma.objects.filter(programa=programa_obj).first()
+        if programa_obj
+        else None
+    )
+    formulario = ConfiguracionModalidadProgramaForm(
+        request.POST or None,
+        instance=configuracion,
+        usuario=request.user,
+        initial={"programa": programa_obj} if programa_obj else None,
+    )
+    if request.method == "POST" and formulario.is_valid():
+        with transaction.atomic():
+            configuracion = formulario.save(commit=False)
+            if not configuracion.pk:
+                configuracion.creado_por = request.user
+            configuracion.actualizado_por = request.user
+            configuracion.full_clean()
+            configuracion.save()
+            registrar_evento(
+                request,
+                accion="configurar_modalidad_programa",
+                tabla="configuraciones_modalidad_programa",
+                registro_id=configuracion.pk,
+                descripcion=f"Se configuró la modalidad adicional del programa {configuracion.programa.codigo}.",
+            )
+        messages.success(request, "Modalidad del programa actualizada.")
+        return redirect(f"{request.path}?programa={configuracion.programa_id}")
+
+    configuraciones = ConfiguracionModalidadPrograma.objects.select_related(
+        "programa", "actualizado_por"
+    ).filter(programa__in=programas)
+    return render(
+        request,
+        "titulacion/modalidades_configuracion.html",
+        {
+            "form": formulario,
+            "programas": programas,
+            "programa_seleccionado": programa_obj,
+            "configuraciones": configuraciones,
+            "page_title": "Modalidades por programa",
+            "page_subtitle": "Configuración controlada de la opción Otra",
+            "active_page": "modalidades_configuracion",
+        },
+    )
+
+
 @permiso_required("TUTOR_VER")
 def tutores_list(request):
     _exigir_rol(request, "coordinador", "supervisor")
-    consulta = _consulta_tutores()
+    consulta = _tutores_visibles(request.user)
     busqueda = request.GET.get("q", "").strip()
     estado = request.GET.get("estado", "").strip()
     if busqueda:
@@ -718,6 +1187,7 @@ def tutores_list(request):
         consulta = consulta.filter(estado=estado)
     else:
         estado = ""
+    consulta = consulta.order_by("usuario__apellidos", "usuario__nombres", "id")
     return render(request, "titulacion/tutores_list.html", {"pagina": Paginator(consulta, 20).get_page(request.GET.get("page")), "busqueda": busqueda, "estado_seleccionado": estado, "estados": EstadoTutor.choices, "puede_crear": rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "TUTOR_CREAR"), "puede_editar": rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "TUTOR_EDITAR"), "page_title": "Tutores", "page_subtitle": "Perfiles académicos de tutores", "active_page": "tutores"})
 
 
@@ -725,7 +1195,7 @@ def tutores_list(request):
 @require_http_methods(["GET", "POST"])
 def tutor_create(request):
     _exigir_rol(request, "coordinador")
-    formulario = TutorForm(request.POST or None)
+    formulario = TutorForm(request.POST or None, usuario_actual=request.user)
     if request.method == "POST" and formulario.is_valid():
         with transaction.atomic():
             tutor = formulario.save()
@@ -735,19 +1205,42 @@ def tutor_create(request):
     return render(request, "titulacion/tutor_form.html", {"form": formulario, "hay_usuarios_disponibles": formulario.fields["usuario"].queryset.exists(), "modo": "crear", "page_title": "Registrar tutor", "page_subtitle": "Vincular cuenta institucional", "active_page": "tutores"})
 
 
-@permiso_required("TUTOR_VER")
+@usuario_activo_required
 def tutor_detail(request, pk):
-    _exigir_rol(request, "coordinador", "supervisor")
-    tutor = get_object_or_404(_consulta_tutores(), pk=pk)
-    return render(request, "titulacion/tutor_detail.html", {"tutor": tutor, "puede_editar": rol_usuario(request.user) == "coordinador" and usuario_tiene_permiso(request.user, "TUTOR_EDITAR"), "page_title": "Detalle de tutor", "page_subtitle": "Información institucional y académica", "active_page": "tutores"})
+    tutor = get_object_or_404(_tutores_visibles(request.user), pk=pk)
+    rol = rol_usuario(request.user)
+    es_propio = rol == "tutor" and tutor.usuario_id == request.user.pk
+    puede_consultar = es_propio or (
+        rol in {"coordinador", "supervisor"}
+        and usuario_tiene_permiso(request.user, "TUTOR_VER")
+    )
+    if not puede_consultar:
+        raise PermissionDenied("No puede consultar este perfil de tutor.")
+    return render(
+        request,
+        "titulacion/tutor_detail.html",
+        {
+            "tutor": tutor,
+            "puede_editar": rol == "coordinador" and usuario_tiene_permiso(request.user, "TUTOR_EDITAR"),
+            "puede_disponibilidad": (es_propio or rol == "coordinador") and usuario_tiene_permiso(request.user, "TUTOR_DISPONIBILIDAD_GESTIONAR"),
+            "asignaciones_activas": tutor.asignaciones.select_related("proyecto__maestrante__usuario").filter(estado=EstadoAsignacion.ACTIVO),
+            "page_title": "Detalle de tutor",
+            "page_subtitle": "Información institucional y académica",
+            "active_page": "tutores",
+        },
+    )
 
 
 @permiso_required("TUTOR_EDITAR")
 @require_http_methods(["GET", "POST"])
 def tutor_update(request, pk):
     _exigir_rol(request, "coordinador")
-    tutor = get_object_or_404(_consulta_tutores(), pk=pk)
-    formulario = TutorForm(request.POST or None, instance=tutor)
+    tutor = get_object_or_404(_tutores_visibles(request.user), pk=pk)
+    formulario = TutorForm(
+        request.POST or None,
+        instance=tutor,
+        usuario_actual=request.user,
+    )
     if request.method == "POST" and formulario.is_valid():
         tutor = formulario.save()
         registrar_evento(request, accion="editar_tutor", tabla="tutores", registro_id=tutor.pk, descripcion="Se actualizó el perfil del tutor.")
@@ -760,10 +1253,151 @@ def tutor_update(request, pk):
 @require_POST
 def tutor_toggle_estado(request, pk):
     _exigir_rol(request, "coordinador")
-    tutor = get_object_or_404(_consulta_tutores(), pk=pk)
+    tutor = get_object_or_404(_tutores_visibles(request.user), pk=pk)
     reactivar = tutor.estado == EstadoTutor.INACTIVO
+    if not reactivar and tutor.asignaciones.filter(
+        estado=EstadoAsignacion.ACTIVO
+    ).exists():
+        messages.error(
+            request,
+            "No puede desactivar un tutor con proyectos activos. Gestione primero sus cambios de tutor.",
+        )
+        return redirect("titulacion:tutor_detail", pk=tutor.pk)
     tutor.estado = EstadoTutor.DISPONIBLE if reactivar else EstadoTutor.INACTIVO
     tutor.save(update_fields=("estado", "fecha_actualizacion"))
     registrar_evento(request, accion="reactivar_tutor" if reactivar else "desactivar_tutor", tabla="tutores", registro_id=tutor.pk, descripcion="Se cambió el estado del perfil del tutor.")
     messages.success(request, "Estado del tutor actualizado.")
     return redirect("titulacion:tutor_detail", pk=tutor.pk)
+
+
+def _puede_gestionar_disponibilidad(usuario, tutor):
+    rol = rol_usuario(usuario)
+    return (
+        usuario_tiene_permiso(usuario, "TUTOR_DISPONIBILIDAD_GESTIONAR")
+        and (
+            (rol == "tutor" and tutor.usuario_id == usuario.pk)
+            or rol == "coordinador"
+        )
+    )
+
+
+@usuario_activo_required
+@require_http_methods(["GET", "POST"])
+def tutor_disponibilidad_create(request, pk):
+    tutor = get_object_or_404(_tutores_visibles(request.user), pk=pk)
+    if not _puede_gestionar_disponibilidad(request.user, tutor):
+        raise PermissionDenied("No puede gestionar esta disponibilidad.")
+    formulario = DisponibilidadTutorForm(request.POST or None)
+    if request.method == "POST" and formulario.is_valid():
+        datos = formulario.cleaned_data
+        cruce = tutor.disponibilidades.filter(
+            dia_semana=datos["dia_semana"],
+            esta_activa=True,
+            hora_inicio__lt=datos["hora_fin"],
+            hora_fin__gt=datos["hora_inicio"],
+        ).exists()
+        if cruce:
+            formulario.add_error(None, "El bloque se cruza con otra disponibilidad.")
+        else:
+            disponibilidad = formulario.save(commit=False)
+            disponibilidad.tutor = tutor
+            disponibilidad.full_clean()
+            disponibilidad.save()
+            registrar_evento(
+                request,
+                accion="crear_disponibilidad_tutor",
+                tabla="disponibilidades_tutor",
+                registro_id=disponibilidad.pk,
+                descripcion="Se registró un bloque semanal de disponibilidad.",
+            )
+            messages.success(request, "Disponibilidad registrada.")
+            return redirect("titulacion:tutor_detail", pk=tutor.pk)
+    return render(
+        request,
+        "titulacion/form.html",
+        {
+            "form": formulario,
+            "titulo": f"Disponibilidad de {tutor.usuario.nombre_completo}",
+            "page_title": "Registrar disponibilidad",
+            "active_page": "tutores",
+        },
+    )
+
+
+@usuario_activo_required
+@require_POST
+def tutor_disponibilidad_toggle(request, pk):
+    disponibilidad = get_object_or_404(
+        DisponibilidadTutor.objects.select_related("tutor__usuario"), pk=pk
+    )
+    if not _puede_gestionar_disponibilidad(
+        request.user, disponibilidad.tutor
+    ) or not _tutores_visibles(request.user).filter(
+        pk=disponibilidad.tutor_id
+    ).exists():
+        raise PermissionDenied("No puede gestionar esta disponibilidad.")
+    disponibilidad.esta_activa = not disponibilidad.esta_activa
+    disponibilidad.save(update_fields=("esta_activa", "fecha_actualizacion"))
+    registrar_evento(
+        request,
+        accion="cambiar_disponibilidad_tutor",
+        tabla="disponibilidades_tutor",
+        registro_id=disponibilidad.pk,
+        descripcion="Se cambió el estado de una disponibilidad semanal.",
+    )
+    messages.success(request, "Disponibilidad actualizada.")
+    return redirect("titulacion:tutor_detail", pk=disponibilidad.tutor_id)
+
+
+@permiso_required("CALENDARIO_TUTORIAS_VER")
+def calendario_tutorias(request):
+    rol = rol_usuario(request.user)
+    consulta = Tutoria.objects.select_related(
+        "proyecto__maestrante__usuario",
+        "proyecto__maestrante__programa",
+        "tutor__usuario",
+    )
+    if rol == "maestrante":
+        consulta = consulta.filter(proyecto__maestrante__usuario_id=request.user.pk)
+    elif rol == "tutor":
+        consulta = consulta.filter(tutor__usuario_id=request.user.pk)
+    elif rol == "coordinador":
+        consulta = consulta.filter(
+            proyecto__maestrante__programa__coordinador_id=request.user.pk
+        )
+    elif rol != "supervisor":
+        raise PermissionDenied("No puede consultar el calendario.")
+    desde = request.GET.get("desde", "").strip()
+    hasta = request.GET.get("hasta", "").strip()
+    try:
+        fecha_desde = date.fromisoformat(desde) if desde else None
+        fecha_hasta = date.fromisoformat(hasta) if hasta else None
+    except ValueError:
+        fecha_desde = fecha_hasta = None
+        desde = hasta = ""
+    if fecha_desde:
+        consulta = consulta.filter(fecha__gte=fecha_desde)
+    if fecha_hasta:
+        consulta = consulta.filter(fecha__lte=fecha_hasta)
+    consulta = consulta.order_by("fecha", "hora_inicio", "numero_tutoria")
+    hoy = timezone.localdate()
+    estadisticas = consulta.aggregate(
+        total=Count("id"),
+        futuras=Count("id", filter=Q(fecha__gte=hoy, estado__in=[EstadoTutoria.PROGRAMADA, EstadoTutoria.REPROGRAMADA])),
+        realizadas=Count("id", filter=Q(estado=EstadoTutoria.REALIZADA)),
+        reprogramadas=Count("id", filter=Q(estado=EstadoTutoria.REPROGRAMADA)),
+    )
+    return render(
+        request,
+        "titulacion/calendario_tutorias.html",
+        {
+            "tutorias": consulta,
+            "estadisticas": estadisticas,
+            "desde": desde,
+            "hasta": hasta,
+            "hoy": hoy,
+            "page_title": "Calendario de tutorías",
+            "page_subtitle": "Agenda académica según su alcance",
+            "active_page": "calendario_tutorias",
+        },
+    )

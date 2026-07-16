@@ -16,9 +16,9 @@
         <div class="item">
           <h4>{{ notificacion.titulo|default:"Notificación" }}</h4>
           <p>{{ notificacion.mensaje|default:"Sin mensaje" }}</p>
-          <p class="tiny">{{ notificacion.creado_en|date:"d/m/Y H:i" }}</p>
+          <p class="tiny">{{ notificacion.fecha_creacion|date:"d/m/Y H:i" }}</p>
 
-          {% if notificacion.leida %}
+          {% if notificacion.fecha_lectura %}
             <span class="badge ok">Leída</span>
           {% else %}
             <span class="badge warn">No leída</span>

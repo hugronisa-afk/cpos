@@ -1,7 +1,33 @@
 {% extends 'titulacion/base_titulacion.html' %}
 
 {% block titulacion_content %}
-<div class="page-head"><div><h2>Historial de aprobaciones</h2><p>Decisiones reales visibles para el rol {{ rol_actual|title }}. El Supervisor permanece en modo consulta.</p></div></div>
-<div class="grid cols-3"><div class="card"><h3>Pendientes</h3><div class="metric">{{ pendientes }}</div></div><div class="card"><h3>Aprobadas</h3><div class="metric">{{ aprobadas }}</div></div><div class="card"><h3>Rechazadas</h3><div class="metric">{{ rechazadas }}</div></div></div>
-<div class="card" style="margin-top:18px"><div class="table-wrap"><table class="table"><thead><tr><th>Proyecto</th><th>Tipo</th><th>Estado</th><th>Responsable</th><th>Fecha</th><th>Observaciones</th></tr></thead><tbody>{% for item in aprobaciones %}<tr><td><a href="{% url 'titulacion:proyecto_detail' item.proyecto.pk %}">{{ item.proyecto.tema|truncatechars:60 }}</a></td><td>{{ item.get_tipo_aprobacion_display }}</td><td><span class="badge">{{ item.get_estado_display }}</span></td><td>{{ item.aprobado_por.nombre_completo|default:'Pendiente' }}</td><td>{{ item.fecha_creacion }}</td><td>{{ item.observaciones|default:'-' }}</td></tr>{% empty %}<tr><td colspan="6">No hay decisiones registradas.</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="page-head">
+  <div><h2>Procesos de aprobación</h2><p>Historial versionado de revisiones y decisiones institucionales.</p></div>
+</div>
+
+<div class="grid cols-4">
+  <div class="card"><h3>En curso</h3><div class="metric">{{ pendientes }}</div></div>
+  <div class="card"><h3>Observados</h3><div class="metric">{{ observadas }}</div></div>
+  <div class="card"><h3>Aprobados</h3><div class="metric">{{ aprobadas }}</div></div>
+  <div class="card"><h3>Rechazados</h3><div class="metric">{{ rechazadas }}</div></div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Proyecto</th><th>Proceso</th><th>Versión</th><th>Etapa</th><th>Estado</th><th>Inicio</th><th>Acción</th></tr></thead>
+    <tbody>
+    {% for item in procesos %}
+      <tr>
+        <td>{{ item.proyecto.tema|truncatechars:55 }}</td>
+        <td>{{ item.get_tipo_display }}</td>
+        <td>{{ item.numero_version }}</td>
+        <td>{{ item.paso_actual }}</td>
+        <td><span class="badge">{{ item.get_estado_display }}</span></td>
+        <td>{{ item.fecha_creacion|date:"d/m/Y H:i" }}</td>
+        <td><a class="btn secondary smallbtn" href="{% url 'titulacion:proceso_aprobacion_detail' item.pk %}">Ver expediente</a></td>
+      </tr>
+    {% empty %}<tr><td colspan="7">No existen procesos formales dentro de su alcance.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
 {% endblock %}

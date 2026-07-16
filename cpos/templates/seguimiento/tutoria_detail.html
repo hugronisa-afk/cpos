@@ -4,7 +4,7 @@
 <div class="page-head">
   <div>
     <h2>Detalle de tutoría</h2>
-    <p>Tutoría {{ tutoria.numero|default:tutoria.id }} · {{ tutoria.tema|default:"Sin tema" }}</p>
+    <p>Tutoría {{ tutoria.numero_tutoria|default:tutoria.id }} · {{ tutoria.proyecto.tema|default:"Sin tema" }}</p>
   </div>
   <a class="btn secondary" href="{% url 'seguimiento:tutorias' %}">Volver</a>
 </div>
@@ -16,8 +16,8 @@
     <p><b>Hora:</b> {{ tutoria.hora_inicio|time:"H:i"|default:"--" }} - {{ tutoria.hora_fin|time:"H:i"|default:"--" }}</p>
     <p><b>Estado:</b> <span class="badge">{{ tutoria.estado }}</span></p>
     <p><b>Sala:</b>
-      {% if tutoria.enlace_sala %}
-        <a href="{{ tutoria.enlace_sala }}" target="_blank">Abrir enlace</a>
+      {% if tutoria.enlace_virtual %}
+        <a href="{{ tutoria.enlace_virtual }}" target="_blank" rel="noopener noreferrer">Abrir enlace</a>
       {% else %}
         Sin enlace
       {% endif %}
@@ -28,20 +28,15 @@
     <h3>Asistencia</h3>
     {% if asistencias %}
       {% for asistencia in asistencias %}
-        <p>
-          <b>{{ asistencia.tipo_participante|title }}:</b>
-          {% if asistencia.asistio %}
-            <span class="badge ok">Asistió</span>
-          {% else %}
-            <span class="badge danger">No asistió</span>
-          {% endif %}
-        </p>
+        <p><b>Tutor:</b> {% if asistencia.asistio_tutor %}<span class="badge ok">Asistió</span>{% else %}<span class="badge danger">No asistió</span>{% endif %}</p>
+        <p><b>Maestrante:</b> {% if asistencia.asistio_maestrante %}<span class="badge ok">Asistió</span>{% else %}<span class="badge danger">No asistió</span>{% endif %}</p>
+        {% if asistencia.observaciones %}<p class="small">{{ asistencia.observaciones }}</p>{% endif %}
       {% endfor %}
     {% else %}
       <p class="small">Aún no se registra asistencia.</p>
     {% endif %}
 
-    <a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_asistencia' tutoria.id %}">Registrar asistencia</a>
+    {% if puede_registrar_asistencia %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_asistencia' tutoria.id %}">Registrar asistencia</a>{% endif %}
   </div>
 
   <div class="card">
@@ -49,10 +44,10 @@
     {% if grabaciones %}
       {% for grabacion in grabaciones %}
         <p>
-          {% if grabacion.enlace %}
-            <a href="{{ grabacion.enlace }}" target="_blank">Ver grabación</a>
-          {% elif grabacion.archivo %}
-            <a href="{{ grabacion.archivo.url }}" target="_blank">Descargar archivo</a>
+          {% if grabacion.enlace_grabacion %}
+            <a href="{% url 'seguimiento:grabacion_enlace' grabacion.id %}" target="_blank" rel="noopener noreferrer">Ver grabación</a>
+          {% elif grabacion.ruta_archivo %}
+            <a href="{% url 'seguimiento:grabacion_download' grabacion.id %}">Descargar archivo</a>
           {% else %}
             Grabación sin archivo o enlace
           {% endif %}
@@ -62,7 +57,7 @@
       <p class="small">No hay grabaciones registradas.</p>
     {% endif %}
 
-    <a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_grabacion' tutoria.id %}">Registrar grabación</a>
+    {% if puede_registrar_grabacion %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:registrar_grabacion' tutoria.id %}">Registrar grabación</a>{% endif %}
   </div>
 </div>
 
@@ -95,7 +90,7 @@
               <td>{{ evidencia.tipo_avance }}</td>
               <td>{{ evidencia.titulo|default:"Sin título" }}</td>
               <td><span class="badge">{{ evidencia.estado }}</span></td>
-              <td>{{ evidencia.fecha_carga|date:"d/m/Y H:i"|default:"Sin fecha" }}</td>
+              <td>{{ evidencia.fecha_creacion|date:"d/m/Y H:i"|default:"Sin fecha" }}</td>
               <td>
                 <a class="btn secondary smallbtn" href="{% url 'seguimiento:detalle_evidencia' evidencia.id %}">Ver</a>
               </td>

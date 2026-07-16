@@ -48,6 +48,21 @@ urlpatterns = [
         views.usuario_cambiar_password,
         name="usuario_cambiar_password",
     ),
+    path(
+        "usuarios/importar/",
+        views.importar_usuarios,
+        name="importar_usuarios",
+    ),
+    path(
+        "usuarios/importar/plantilla/",
+        views.descargar_plantilla_usuarios,
+        name="plantilla_importacion_usuarios",
+    ),
+    path(
+        "usuarios/importar/resultado/",
+        views.exportar_resultado_importacion,
+        name="resultado_importacion_usuarios",
+    ),
 
     # Roles y permisos.
     path("roles/", views.roles_list, name="roles_list"),
@@ -105,5 +120,6 @@ urlpatterns = [
     path("bitacora/", views.bitacora_list, name="bitacora_list"),
     path("auditoria/", views.bitacora_list, name="auditoria"),
     path("verificar-bd/", views.verificar_bd, name="verificar_bd"),
+    path("mantenimiento/", views.mantenimiento_sistema, name="mantenimiento"),
     path("acceso-denegado/", views.acceso_denegado, name="acceso_denegado"),
 ]

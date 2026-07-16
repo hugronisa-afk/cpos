@@ -14,17 +14,11 @@
     <h3>Información general</h3>
     <p><b>Tipo:</b> {{ evidencia.tipo_avance }}</p>
     <p><b>Estado:</b> <span class="badge">{{ evidencia.estado }}</span></p>
-    <p><b>Fecha:</b> {{ evidencia.fecha_carga|date:"d/m/Y H:i"|default:"Sin fecha" }}</p>
+    <p><b>Fecha:</b> {{ evidencia.fecha_creacion|date:"d/m/Y H:i"|default:"Sin fecha" }}</p>
     <p><b>Descripción:</b> {{ evidencia.descripcion|default:"Sin descripción" }}</p>
 
     <div class="pill-row" style="margin-top:12px">
-      {% if evidencia.archivo %}
-        <a class="btn secondary smallbtn" href="{{ evidencia.archivo.url }}" target="_blank">Ver archivo</a>
-      {% endif %}
-
-      {% if evidencia.enlace %}
-        <a class="btn secondary smallbtn" href="{{ evidencia.enlace }}" target="_blank">Abrir enlace</a>
-      {% endif %}
+      {% if evidencia.archivo_url %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:descargar_evidencia' evidencia.id %}">Descargar archivo</a>{% endif %}
     </div>
   </div>
 
@@ -51,9 +45,9 @@
       <div class="timeline">
         {% for validacion in validaciones %}
           <div class="item">
-            <h4>{{ validacion.estado|title }}</h4>
+            <h4>{{ validacion.estado_resultado|title }}</h4>
             <p>{{ validacion.observaciones|default:"Sin observaciones" }}</p>
-            <p class="tiny">{{ validacion.fecha_validacion|date:"d/m/Y H:i" }}</p>
+            <p class="tiny">{{ validacion.fecha_creacion|date:"d/m/Y H:i" }}</p>
           </div>
         {% endfor %}
       </div>
@@ -70,8 +64,9 @@
         {% for version in versiones %}
           <div class="item">
             <h4>Versión {{ version.numero_version }}</h4>
-            <p>{{ version.descripcion_cambios|default:"Sin descripción de cambios" }}</p>
-            <p class="tiny">{{ version.creado_en|date:"d/m/Y H:i" }}</p>
+            <p>{{ version.comentario|default:"Sin descripción de cambios" }}</p>
+            <p class="tiny">{{ version.fecha_creacion|date:"d/m/Y H:i" }}</p>
+            {% if version.archivo_url %}<a class="btn secondary smallbtn" href="{% url 'seguimiento:descargar_version' version.id %}">Descargar</a>{% endif %}
           </div>
         {% endfor %}
       </div>

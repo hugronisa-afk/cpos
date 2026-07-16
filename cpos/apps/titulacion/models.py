@@ -3,7 +3,7 @@ from django.db import models
 from django.db.models.functions import Now
 from django.utils import timezone
 
-from apps.accounts.models import Maestrante, UsuarioCPOS
+from apps.accounts.models import Maestrante, Programa, UsuarioCPOS
 
 
 class EstadoTutor(models.TextChoices):
@@ -48,6 +48,23 @@ class EstadoReprogramacion(models.TextChoices):
     RECHAZADA = "rechazada", "Rechazada"
 
 
+class EstadoSolicitudCambioTutor(models.TextChoices):
+    PENDIENTE = "pendiente", "Pendiente"
+    APROBADA = "aprobada", "Aprobada"
+    RECHAZADA = "rechazada", "Rechazada"
+    CANCELADA = "cancelada", "Cancelada"
+
+
+class DiaSemana(models.IntegerChoices):
+    LUNES = 0, "Lunes"
+    MARTES = 1, "Martes"
+    MIERCOLES = 2, "Miércoles"
+    JUEVES = 3, "Jueves"
+    VIERNES = 4, "Viernes"
+    SABADO = 5, "Sábado"
+    DOMINGO = 6, "Domingo"
+
+
 class TipoArchivo(models.TextChoices):
     WORD = "word", "Documento Word"
     PDF = "pdf", "Documento PDF"
@@ -76,6 +93,12 @@ class EstadoCambioTema(models.TextChoices):
     RECHAZADA = "rechazada", "Rechazada"
 
 
+class EstadoCambioModalidad(models.TextChoices):
+    PENDIENTE = "pendiente", "Pendiente"
+    APROBADA = "aprobada", "Aprobada"
+    RECHAZADA = "rechazada", "Rechazada"
+
+
 class TipoAprobacion(models.TextChoices):
     PROYECTO = "proyecto", "Proyecto"
     CAMBIO_TEMA = "cambio_tema", "Cambio de tema"
@@ -84,6 +107,7 @@ class TipoAprobacion(models.TextChoices):
     CIERRE = "cierre_proceso", "Cierre de proceso"
     ARTICULO = "articulo", "Artículo"
     ARCHIVO_PROYECTO = "archivo_proyecto", "Archivo de proyecto"
+    CAMBIO_MODALIDAD = "cambio_modalidad", "Cambio de modalidad"
 
 
 class EstadoAprobacion(models.TextChoices):
@@ -91,6 +115,35 @@ class EstadoAprobacion(models.TextChoices):
     APROBADO = "aprobado", "Aprobado"
     RECHAZADO = "rechazado", "Rechazado"
     OBSERVADO = "observado", "Observado"
+
+
+class TipoProcesoAprobacion(models.TextChoices):
+    PROYECTO = "proyecto", "Aprobación de proyecto"
+    CAMBIO_TEMA = "cambio_tema", "Cambio de tema"
+    CAMBIO_MODALIDAD = "cambio_modalidad", "Cambio de modalidad"
+
+
+class EstadoProcesoAprobacion(models.TextChoices):
+    EN_CURSO = "en_curso", "En curso"
+    OBSERVADO = "observado", "Observado"
+    APROBADO = "aprobado", "Aprobado"
+    RECHAZADO = "rechazado", "Rechazado"
+    CANCELADO = "cancelado", "Cancelado"
+
+
+class EstadoPasoAprobacion(models.TextChoices):
+    PENDIENTE = "pendiente", "Pendiente"
+    ACTIVO = "activo", "En revisión"
+    APROBADO = "aprobado", "Aprobado"
+    OBSERVADO = "observado", "Observado"
+    RECHAZADO = "rechazado", "Rechazado"
+
+
+class TipoDocumentoAprobacion(models.TextChoices):
+    WORD = "word", "Documento editable Word"
+    PDF = "pdf", "Documento PDF"
+    RESPALDO = "respaldo", "Documento de respaldo"
+    RESOLUCION = "resolucion", "Resolución oficial"
 
 
 class ActualizacionMixin(models.Model):
@@ -107,6 +160,62 @@ class ActualizacionMixin(models.Model):
                 "fecha_actualizacion"
             }
         return super().save(*args, **kwargs)
+
+
+class ConfiguracionModalidadPrograma(ActualizacionMixin):
+    """Configuración de la opción adicional «Otra» para cada programa."""
+
+    id = models.BigAutoField(primary_key=True)
+    programa = models.OneToOneField(
+        Programa,
+        on_delete=models.PROTECT,
+        db_column="programa_id",
+        related_name="configuracion_modalidad_otra",
+    )
+    nombre = models.CharField(max_length=150)
+    descripcion = models.TextField()
+    tipos_evidencia = models.JSONField(db_default=list)
+    producto_final_nombre = models.CharField(max_length=150)
+    tipo_archivo_final = models.CharField(
+        max_length=30,
+        choices=TipoArchivo.choices,
+        db_default=TipoArchivo.PDF,
+    )
+    esta_activa = models.BooleanField(db_default=True)
+    creado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="creado_por_id",
+        blank=True,
+        null=True,
+        related_name="configuraciones_modalidad_creadas",
+    )
+    actualizado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="actualizado_por_id",
+        blank=True,
+        null=True,
+        related_name="configuraciones_modalidad_actualizadas",
+    )
+
+    class Meta:
+        managed = False
+        db_table = "configuraciones_modalidad_programa"
+        ordering = ("programa__nombre",)
+
+    def __str__(self):
+        return f"{self.programa}: {self.nombre}"
+
+    def clean(self):
+        if not str(self.nombre or "").strip():
+            raise ValidationError({"nombre": "El nombre de la modalidad es obligatorio."})
+        if not str(self.descripcion or "").strip():
+            raise ValidationError({"descripcion": "Describa la modalidad y su alcance."})
+        if not isinstance(self.tipos_evidencia, list) or not self.tipos_evidencia:
+            raise ValidationError(
+                {"tipos_evidencia": "Seleccione al menos un tipo de evidencia."}
+            )
 
 
 class Tutor(ActualizacionMixin):
@@ -133,6 +242,73 @@ class Tutor(ActualizacionMixin):
 
     def __str__(self):
         return self.usuario.nombre_completo
+
+
+class TutorPrograma(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    tutor = models.ForeignKey(
+        Tutor,
+        on_delete=models.PROTECT,
+        db_column="tutor_id",
+        related_name="vinculos_programa",
+    )
+    programa = models.ForeignKey(
+        Programa,
+        on_delete=models.PROTECT,
+        db_column="programa_id",
+        related_name="tutores_vinculados",
+    )
+    cupo_maximo = models.PositiveSmallIntegerField(db_default=5)
+    esta_activo = models.BooleanField(db_default=True)
+
+    class Meta:
+        managed = False
+        db_table = "tutores_programas"
+        ordering = ("programa__nombre", "tutor__usuario__apellidos")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("tutor", "programa"),
+                name="uq_tutores_programas_tutor_programa",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.tutor} · {self.programa}"
+
+
+class DisponibilidadTutor(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    tutor = models.ForeignKey(
+        Tutor,
+        on_delete=models.PROTECT,
+        db_column="tutor_id",
+        related_name="disponibilidades",
+    )
+    dia_semana = models.PositiveSmallIntegerField(choices=DiaSemana.choices)
+    hora_inicio = models.TimeField()
+    hora_fin = models.TimeField()
+    esta_activa = models.BooleanField(db_default=True)
+
+    class Meta:
+        managed = False
+        db_table = "disponibilidades_tutor"
+        ordering = ("dia_semana", "hora_inicio")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("tutor", "dia_semana", "hora_inicio", "hora_fin"),
+                name="uq_disponibilidad_tutor_bloque",
+            ),
+        )
+
+    def clean(self):
+        if self.hora_inicio and self.hora_fin and self.hora_fin <= self.hora_inicio:
+            raise ValidationError({"hora_fin": "Debe ser posterior a la hora de inicio."})
+
+    def __str__(self):
+        return (
+            f"{self.tutor} · {self.get_dia_semana_display()} "
+            f"{self.hora_inicio:%H:%M}-{self.hora_fin:%H:%M}"
+        )
 
 
 class ProyectoTitulacion(ActualizacionMixin):
@@ -215,6 +391,69 @@ class AsignacionTutor(ActualizacionMixin):
         managed = False
         db_table = "asignaciones_tutor"
         ordering = ("-fecha_asignacion", "-id")
+
+
+class SolicitudCambioTutor(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proyecto = models.ForeignKey(
+        ProyectoTitulacion,
+        on_delete=models.PROTECT,
+        db_column="proyecto_id",
+        related_name="solicitudes_cambio_tutor",
+    )
+    asignacion_actual = models.ForeignKey(
+        AsignacionTutor,
+        on_delete=models.PROTECT,
+        db_column="asignacion_actual_id",
+        related_name="solicitudes_cambio",
+    )
+    tutor_propuesto = models.ForeignKey(
+        Tutor,
+        on_delete=models.PROTECT,
+        db_column="tutor_propuesto_id",
+        related_name="solicitudes_para_asignacion",
+    )
+    motivo = models.TextField()
+    solicitado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="solicitado_por_id",
+        blank=True,
+        null=True,
+        related_name="cambios_tutor_solicitados",
+    )
+    estado = models.CharField(
+        max_length=20,
+        choices=EstadoSolicitudCambioTutor.choices,
+        db_default=EstadoSolicitudCambioTutor.PENDIENTE,
+    )
+    resuelto_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="resuelto_por_id",
+        blank=True,
+        null=True,
+        related_name="cambios_tutor_resueltos",
+    )
+    observaciones_resolucion = models.TextField(blank=True, null=True)
+    fecha_resolucion = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "solicitudes_cambio_tutor"
+        ordering = ("-fecha_creacion", "-id")
+
+    def clean(self):
+        if (
+            self.asignacion_actual_id
+            and self.tutor_propuesto_id
+            and self.asignacion_actual.tutor_id == self.tutor_propuesto_id
+        ):
+            raise ValidationError(
+                {"tutor_propuesto": "Seleccione un tutor diferente al actual."}
+            )
+        if not str(self.motivo or "").strip():
+            raise ValidationError({"motivo": "Explique el motivo del cambio."})
 
 
 class Tutoria(ActualizacionMixin):
@@ -330,6 +569,7 @@ class ReprogramacionTutoria(ActualizacionMixin):
         choices=EstadoReprogramacion.choices,
         db_default=EstadoReprogramacion.PENDIENTE,
     )
+    observaciones_resolucion = models.TextField(blank=True, null=True)
 
     class Meta:
         managed = False
@@ -473,6 +713,58 @@ class SolicitudCambioTema(ActualizacionMixin):
         ordering = ("-fecha_creacion",)
 
 
+class SolicitudCambioModalidad(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proyecto = models.ForeignKey(
+        ProyectoTitulacion,
+        on_delete=models.PROTECT,
+        db_column="proyecto_id",
+        related_name="solicitudes_cambio_modalidad",
+    )
+    modalidad_actual = models.CharField(max_length=40, choices=ModalidadProyecto.choices)
+    modalidad_propuesta = models.CharField(
+        max_length=40,
+        choices=ModalidadProyecto.choices,
+    )
+    justificacion = models.TextField()
+    solicitado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="solicitado_por_id",
+        blank=True,
+        null=True,
+        related_name="cambios_modalidad_solicitados",
+    )
+    estado = models.CharField(
+        max_length=30,
+        choices=EstadoCambioModalidad.choices,
+        db_default=EstadoCambioModalidad.PENDIENTE,
+    )
+    resuelto_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="resuelto_por_id",
+        blank=True,
+        null=True,
+        related_name="cambios_modalidad_resueltos",
+    )
+    observaciones_resolucion = models.TextField(blank=True, null=True)
+    fecha_resolucion = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "solicitudes_cambio_modalidad"
+        ordering = ("-fecha_creacion",)
+
+    def clean(self):
+        if self.modalidad_actual == self.modalidad_propuesta:
+            raise ValidationError(
+                {"modalidad_propuesta": "Seleccione una modalidad diferente a la actual."}
+            )
+        if not str(self.justificacion or "").strip():
+            raise ValidationError({"justificacion": "La justificación es obligatoria."})
+
+
 class Aprobacion(models.Model):
     id = models.BigAutoField(primary_key=True)
     proyecto = models.ForeignKey(
@@ -504,3 +796,134 @@ class Aprobacion(models.Model):
         managed = False
         db_table = "aprobaciones"
         ordering = ("-fecha_creacion",)
+
+
+class ProcesoAprobacion(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proyecto = models.ForeignKey(
+        ProyectoTitulacion,
+        on_delete=models.PROTECT,
+        db_column="proyecto_id",
+        related_name="procesos_aprobacion",
+    )
+    tipo = models.CharField(max_length=40, choices=TipoProcesoAprobacion.choices)
+    referencia_tabla = models.CharField(max_length=100)
+    referencia_id = models.BigIntegerField()
+    numero_version = models.PositiveSmallIntegerField(db_default=1)
+    estado = models.CharField(
+        max_length=30,
+        choices=EstadoProcesoAprobacion.choices,
+        db_default=EstadoProcesoAprobacion.EN_CURSO,
+    )
+    paso_actual = models.PositiveSmallIntegerField(db_default=1)
+    creado_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="creado_por_id",
+        blank=True,
+        null=True,
+        related_name="procesos_aprobacion_creados",
+    )
+    fecha_finalizacion = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "procesos_aprobacion"
+        ordering = ("-fecha_creacion", "-id")
+        constraints = (
+            models.UniqueConstraint(
+                fields=(
+                    "tipo",
+                    "referencia_tabla",
+                    "referencia_id",
+                    "numero_version",
+                ),
+                name="uq_proceso_aprobacion_version",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.get_tipo_display()} · versión {self.numero_version}"
+
+
+class PasoAprobacion(ActualizacionMixin):
+    id = models.BigAutoField(primary_key=True)
+    proceso = models.ForeignKey(
+        ProcesoAprobacion,
+        on_delete=models.PROTECT,
+        db_column="proceso_id",
+        related_name="pasos",
+    )
+    orden = models.PositiveSmallIntegerField()
+    codigo = models.CharField(max_length=60)
+    nombre = models.CharField(max_length=150)
+    instancia = models.CharField(max_length=150)
+    rol_responsable = models.CharField(max_length=50)
+    estado = models.CharField(
+        max_length=30,
+        choices=EstadoPasoAprobacion.choices,
+        db_default=EstadoPasoAprobacion.PENDIENTE,
+    )
+    resuelto_por = models.ForeignKey(
+        UsuarioCPOS,
+        on_delete=models.SET_NULL,
+        db_column="resuelto_por_id",
+        blank=True,
+        null=True,
+        related_name="pasos_aprobacion_resueltos",
+    )
+    observaciones = models.TextField(blank=True, null=True)
+    fecha_resolucion = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = "pasos_aprobacion"
+        ordering = ("orden", "id")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("proceso", "orden"),
+                name="uq_paso_aprobacion_orden",
+            ),
+            models.UniqueConstraint(
+                fields=("proceso", "codigo"),
+                name="uq_paso_aprobacion_codigo",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.proceso} · {self.nombre}"
+
+
+class DocumentoProcesoAprobacion(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    proceso = models.ForeignKey(
+        ProcesoAprobacion,
+        on_delete=models.PROTECT,
+        db_column="proceso_id",
+        related_name="documentos",
+    )
+    archivo = models.ForeignKey(
+        ArchivoProyecto,
+        on_delete=models.PROTECT,
+        db_column="archivo_id",
+        related_name="usos_en_aprobacion",
+    )
+    tipo_documento = models.CharField(
+        max_length=30,
+        choices=TipoDocumentoAprobacion.choices,
+    )
+    fecha_creacion = models.DateTimeField(db_default=Now(), editable=False)
+
+    class Meta:
+        managed = False
+        db_table = "documentos_proceso_aprobacion"
+        ordering = ("tipo_documento", "id")
+        constraints = (
+            models.UniqueConstraint(
+                fields=("proceso", "tipo_documento"),
+                name="uq_documento_proceso_tipo",
+            ),
+        )
+
+    def __str__(self):
+        return f"{self.proceso} · {self.get_tipo_documento_display()}"

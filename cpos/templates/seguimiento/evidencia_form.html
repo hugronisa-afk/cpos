@@ -5,7 +5,8 @@
   <div>
     <h2>Formulario de evidencia</h2>
     {% if tutoria %}
-      <p>Tutoría {{ tutoria.numero|default:tutoria.id }} · {{ tutoria.tema|default:"Sin tema" }}</p>
+      <p>Tutoría {{ tutoria.numero_tutoria|default:tutoria.id }} · {{ tutoria.proyecto.tema|default:"Sin tema" }}</p>
+      <p class="small">Las categorías disponibles corresponden a la modalidad elegida en el proyecto.</p>
     {% elif evidencia %}
       <p>Corrección de evidencia: {{ evidencia.titulo|default:"Sin título" }}</p>
     {% else %}

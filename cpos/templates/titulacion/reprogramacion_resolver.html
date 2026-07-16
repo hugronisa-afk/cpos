@@ -1,0 +1,22 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><h2>Resolver reprogramación</h2><p>Tutoría {{ reprogramacion.tutoria.numero_tutoria }}</p></div>
+  <a class="btn secondary" href="{% url 'titulacion:proyecto_detail' reprogramacion.tutoria.proyecto.pk %}">Volver</a>
+</div>
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Cambio solicitado</h3>
+    <p><b>Anterior:</b> {{ reprogramacion.fecha_anterior|date:'d/m/Y' }} · {{ reprogramacion.hora_inicio_anterior|time:'H:i' }}–{{ reprogramacion.hora_fin_anterior|time:'H:i' }}</p>
+    <p><b>Nueva:</b> {{ reprogramacion.fecha_nueva|date:'d/m/Y' }} · {{ reprogramacion.hora_inicio_nueva|time:'H:i' }}–{{ reprogramacion.hora_fin_nueva|time:'H:i' }}</p>
+    <p><b>Motivo:</b> {{ reprogramacion.motivo }}</p>
+    <p class="small">Al aprobar se validarán nuevamente disponibilidad y cruces de agenda.</p>
+  </div>
+  <form class="card form-card" method="post" novalidate>
+    {% csrf_token %}
+    {% include 'accounts/partials/form_fields.html' %}
+    <div class="form-actions"><button class="btn" type="submit">Registrar decisión</button></div>
+  </form>
+</div>
+{% endblock %}

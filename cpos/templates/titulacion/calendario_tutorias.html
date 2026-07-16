@@ -1,0 +1,35 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div><h2>Calendario de tutorías</h2><p>Agenda real visible para su rol.</p></div>
+</div>
+<div class="grid cols-4">
+  <div class="card stat"><div><span class="small">Total visible</span><div class="metric">{{ estadisticas.total }}</div></div></div>
+  <div class="card stat"><div><span class="small">Próximas</span><div class="metric">{{ estadisticas.futuras }}</div></div></div>
+  <div class="card stat"><div><span class="small">Realizadas</span><div class="metric">{{ estadisticas.realizadas }}</div></div></div>
+  <div class="card stat"><div><span class="small">Reprogramadas</span><div class="metric">{{ estadisticas.reprogramadas }}</div></div></div>
+</div>
+<form class="card filter-bar" method="get" style="margin-top:18px">
+  <div class="field"><label for="desde">Desde</label><input id="desde" type="date" name="desde" value="{{ desde }}"></div>
+  <div class="field"><label for="hasta">Hasta</label><input id="hasta" type="date" name="hasta" value="{{ hasta }}"></div>
+  <div class="filter-actions"><button class="btn" type="submit">Filtrar</button><a class="btn secondary" href="{% url 'titulacion:calendario_tutorias' %}">Limpiar</a></div>
+</form>
+<div class="card" style="margin-top:18px">
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Fecha y hora</th><th>Sesión</th><th>Maestrante</th><th>Tutor</th><th>Estado</th><th>Sala</th></tr></thead>
+    <tbody>
+    {% for item in tutorias %}
+      <tr>
+        <td>{{ item.fecha|date:'d/m/Y' }}<div class="tiny">{{ item.hora_inicio|time:'H:i' }}–{{ item.hora_fin|time:'H:i' }}</div></td>
+        <td><a href="{% url 'titulacion:proyecto_detail' item.proyecto.pk %}">Tutoría {{ item.numero_tutoria }}</a><div class="tiny">{{ item.proyecto.maestrante.programa.nombre }}</div></td>
+        <td>{{ item.proyecto.maestrante.usuario.nombre_completo }}</td>
+        <td>{{ item.tutor.usuario.nombre_completo }}</td>
+        <td><span class="badge {% if item.estado == 'realizada' %}ok{% elif item.fecha < hoy and item.estado == 'programada' %}danger{% else %}warn{% endif %}">{{ item.get_estado_display }}</span>{% if item.fecha < hoy and item.estado == 'programada' %}<div class="tiny">Fecha vencida</div>{% endif %}</td>
+        <td>{% if item.enlace_virtual %}<a href="{{ item.enlace_virtual }}" target="_blank" rel="noopener noreferrer">Abrir sala</a>{% else %}Sin enlace{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="6">No hay tutorías en el rango seleccionado.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

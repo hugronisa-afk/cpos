@@ -4,7 +4,7 @@
 <div class="page-head">
   <div>
     <h2>Registro de tutoría</h2>
-    <p>Tutoría {{ tutoria.numero|default:tutoria.id }} · {{ tutoria.tema|default:"Sin tema" }}</p>
+    <p>Tutoría {{ tutoria.numero_tutoria|default:tutoria.id }} · {{ tutoria.proyecto.tema|default:"Sin tema" }}</p>
   </div>
   <a class="btn secondary" href="{% url 'seguimiento:detalle_tutoria' tutoria.id %}">Volver</a>
 </div>

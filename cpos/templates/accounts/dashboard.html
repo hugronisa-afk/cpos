@@ -3,9 +3,11 @@
 {% block accounts_content %}
 <section class="role-hero role-{{ rol_actual }}">
   <div>
-    <span class="role-kicker">Panel {{ user.rol.nombre|capfirst }}</span>
+    <span class="role-kicker">Panel {{ user.rol.nombre_visible }}</span>
     <h2>Bienvenido, {{ user.nombres }}</h2>
-    {% if rol_actual == 'supervisor' %}
+    {% if rol_actual == 'administrador_desarrollador' %}
+      <p>Administra cuentas, importaciones, catálogos y mantenimiento técnico sin intervenir en decisiones académicas.</p>
+    {% elif rol_actual == 'supervisor' %}
       <p>Supervisa la configuración institucional, la seguridad y el estado general de los expedientes.</p>
     {% elif rol_actual == 'coordinador' %}
       <p>Gestiona los programas, cohortes y maestrantes que se encuentran bajo tu coordinación.</p>
@@ -15,10 +17,21 @@
       <p>Consulta tu expediente, proyecto de titulación, tutorías y evidencias personales.</p>
     {% endif %}
   </div>
-  <div class="role-identity"><span>{{ user.nombre_usuario }}</span><b>{{ user.rol.nombre|capfirst }}</b></div>
+  <div class="role-identity"><span>{{ user.nombre_usuario }}</span><b>{{ user.rol.nombre_visible }}</b></div>
 </section>
 
-{% if rol_actual == 'supervisor' %}
+{% if rol_actual == 'administrador_desarrollador' %}
+  <div class="grid cols-4">
+    <a class="card stat" href="{% url 'accounts:usuarios' %}"><div><span class="small">Usuarios</span><div class="metric">{{ indicadores.usuarios }}</div><div class="tiny">{{ indicadores.usuarios_activos }} activos · {{ indicadores.usuarios_bloqueados }} bloqueados</div></div><div class="icon">US</div></a>
+    <a class="card stat" href="{% url 'accounts:importar_usuarios' %}"><div><span class="small">Cuentas técnicas</span><div class="metric">{{ indicadores.cuentas_tecnicas }}/3</div></div><div class="icon">AD</div></a>
+    <a class="card stat" href="{% url 'accounts:programas_list' %}"><div><span class="small">Programas</span><div class="metric">{{ indicadores.programas }}</div></div><div class="icon">PR</div></a>
+    <a class="card stat" href="{% url 'accounts:cohortes_list' %}"><div><span class="small">Cohortes</span><div class="metric">{{ indicadores.cohortes }}</div></div><div class="icon">CO</div></a>
+  </div>
+  <div class="grid cols-2">
+    <div class="card"><h3>Administración técnica</h3><div class="dashboard-actions"><a href="{% url 'accounts:usuarios' %}"><b>Usuarios</b><span>Crear, editar y controlar accesos.</span></a><a href="{% url 'accounts:importar_usuarios' %}"><b>Importación masiva</b><span>Validar CSV/XLSX y crear cuentas.</span></a><a href="{% url 'accounts:roles_list' %}"><b>Roles y permisos</b><span>Administrar el control de acceso.</span></a><a href="{% url 'accounts:bitacora_list' %}"><b>Bitácora</b><span>Auditar operaciones técnicas.</span></a></div></div>
+    <div class="card"><h3>Operación y catálogos</h3><div class="dashboard-actions"><a href="{% url 'accounts:mantenimiento' %}"><b>Mantenimiento</b><span>Consultar diagnósticos y limpiar sesiones expiradas.</span></a><a href="{% url 'db_status' %}"><b>Estado de la base</b><span>Comprobar la conexión institucional.</span></a><a href="{% url 'accounts:programas_list' %}"><b>Programas</b><span>Administrar catálogos institucionales.</span></a><a href="{% url 'accounts:cohortes_list' %}"><b>Cohortes</b><span>Administrar periodos académicos.</span></a></div></div>
+  </div>
+{% elif rol_actual == 'supervisor' %}
   <div class="grid cols-4">
     <a class="card stat" href="{% url 'accounts:usuarios' %}"><div><span class="small">Usuarios</span><div class="metric">{{ indicadores.usuarios }}</div><div class="tiny">{{ indicadores.usuarios_activos }} activos · {{ indicadores.usuarios_bloqueados }} bloqueados</div></div><div class="icon">US</div></a>
     <a class="card stat" href="{% url 'accounts:programas_list' %}"><div><span class="small">Programas</span><div class="metric">{{ indicadores.programas }}</div></div><div class="icon">PR</div></a>
@@ -57,5 +70,5 @@
   <div class="card"><h3>Trabajo de tutoría</h3><div class="dashboard-actions cols-3"><a href="{% url 'titulacion:dashboard' %}"><b>Mis asignaciones</b><span>Consultar proyectos asignados.</span></a><a href="{% url 'seguimiento:tutorias' %}"><b>Tutorías</b><span>Revisar sesiones programadas.</span></a><a href="{% url 'seguimiento:evidencias' %}"><b>Evidencias</b><span>Observar y validar avances.</span></a><a href="{% url 'titulacion:proyecto' %}"><b>Proyectos</b><span>Revisar documentación académica.</span></a><a href="{% url 'titulacion:aprobaciones' %}"><b>Solicitudes</b><span>Consultar cambios y aprobaciones.</span></a><a href="{% url 'accounts:perfil' %}"><b>Mi perfil</b><span>Actualizar datos de contacto.</span></a></div></div>
 {% endif %}
 
-<div class="card account-security-strip"><div><h3>Seguridad de la cuenta</h3><p class="small">El acceso está asociado exclusivamente a <b>{{ user.nombre_usuario }}</b>.</p></div><div class="actions"><span class="badge ok">Cuenta activa</span><span class="badge">{{ user.rol.nombre|capfirst }}</span><a class="btn secondary smallbtn" href="{% url 'accounts:perfil' %}">Actualizar perfil</a></div></div>
+<div class="card account-security-strip"><div><h3>Seguridad de la cuenta</h3><p class="small">El acceso está asociado exclusivamente a <b>{{ user.nombre_usuario }}</b>.</p></div><div class="actions"><span class="badge ok">Cuenta activa</span><span class="badge">{{ user.rol.nombre_visible }}</span><a class="btn secondary smallbtn" href="{% url 'accounts:perfil' %}">Actualizar perfil</a></div></div>
 {% endblock %}

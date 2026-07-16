@@ -1,7 +1,7 @@
 {% extends 'accounts/base_accounts.html' %}
 
 {% block accounts_content %}
-<div class="page-head"><div><h2>{% if modo == 'crear' %}Crear rol{% else %}Editar rol{% endif %}</h2><p>Los nombres admitidos corresponden a los cuatro roles institucionales.</p></div><a class="btn secondary" href="{% url 'accounts:roles_list' %}">Volver</a></div>
+<div class="page-head"><div><h2>{% if modo == 'crear' %}Crear rol{% else %}Editar rol{% endif %}</h2><p>Los roles académicos y el rol técnico protegido se administran por separado.</p></div><a class="btn secondary" href="{% url 'accounts:roles_list' %}">Volver</a></div>
 <form class="card form-card" method="post" novalidate>
   {% csrf_token %}
   {% include 'accounts/partials/form_fields.html' %}

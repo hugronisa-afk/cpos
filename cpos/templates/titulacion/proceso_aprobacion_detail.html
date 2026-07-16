@@ -1,0 +1,59 @@
+{% extends 'titulacion/base_titulacion.html' %}
+
+{% block titulacion_content %}
+<div class="page-head">
+  <div>
+    <h2>{{ proceso.get_tipo_display }}</h2>
+    <p>Versión {{ proceso.numero_version }} · {{ proceso.proyecto.tema }}</p>
+  </div>
+  <div class="actions"><a class="btn secondary" href="{% url 'titulacion:proyecto_detail' proceso.proyecto_id %}">Volver al proyecto</a><span class="badge">{{ proceso.get_estado_display }}</span></div>
+</div>
+
+<div class="grid cols-3">
+  <div class="card"><h3>Solicitante</h3><p>{{ proceso.creado_por.nombre_completo|default:'Migración del sistema' }}</p><p>{{ proceso.fecha_creacion|date:"d/m/Y H:i" }}</p></div>
+  <div class="card"><h3>Etapa actual</h3>{% if paso_actual %}<p><b>{{ paso_actual.nombre }}</b></p><p>{{ paso_actual.instancia }}</p><span class="badge warn">Responsable: {{ paso_actual.rol_responsable|title }}</span>{% else %}<p>El proceso ya finalizó.</p>{% endif %}</div>
+  <div class="card"><h3>Resultado</h3><div class="metric">{{ proceso.get_estado_display }}</div>{% if proceso.fecha_finalizacion %}<p>{{ proceso.fecha_finalizacion|date:"d/m/Y H:i" }}</p>{% endif %}</div>
+</div>
+
+{% if solicitud %}
+<div class="card" style="margin-top:18px">
+  <h3>Solicitud sustentada</h3>
+  {% if proceso.tipo == 'cambio_tema' %}<p><b>Tema actual:</b> {{ solicitud.tema_actual }}</p><p><b>Tema propuesto:</b> {{ solicitud.tema_propuesto }}</p>{% else %}<p><b>Modalidad actual:</b> {{ solicitud.get_modalidad_actual_display }}</p><p><b>Modalidad propuesta:</b> {{ solicitud.get_modalidad_propuesta_display }}</p>{% endif %}
+  <p><b>Justificación:</b> {{ solicitud.justificacion }}</p>
+</div>
+{% endif %}
+
+{% if documentos %}
+<div class="card" style="margin-top:18px">
+  <h3>Documentos congelados para esta versión</h3>
+  <p class="small">Estos archivos son la copia lógica revisada en todas las etapas. Las correcciones generan una nueva versión del proceso.</p>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Tipo</th><th>Archivo</th><th>Fecha de carga</th><th>Acción</th></tr></thead>
+    <tbody>{% for documento in documentos %}<tr><td>{{ documento.get_tipo_documento_display }}</td><td>{{ documento.archivo.nombre_original }}</td><td>{{ documento.archivo.fecha_creacion|date:"d/m/Y H:i" }}</td><td><a class="btn secondary smallbtn" href="{% url 'titulacion:archivo_download' documento.archivo_id %}">Descargar</a></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:18px">
+  <h3>Historial de etapas</h3>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Orden</th><th>Etapa</th><th>Instancia</th><th>Responsable</th><th>Estado</th><th>Decisión</th></tr></thead>
+    <tbody>
+    {% for paso in pasos %}<tr><td>{{ paso.orden }}</td><td>{{ paso.nombre }}</td><td>{{ paso.instancia }}</td><td>{{ paso.rol_responsable|title }}</td><td><span class="badge">{{ paso.get_estado_display }}</span></td><td>{% if paso.resuelto_por %}<b>{{ paso.resuelto_por.nombre_completo }}</b><br>{{ paso.fecha_resolucion|date:"d/m/Y H:i" }}{% if paso.observaciones %}<p class="small">{{ paso.observaciones }}</p>{% endif %}{% else %}Pendiente{% endif %}</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+{% if puede_resolver %}
+<div class="card" style="margin-top:18px">
+  <h3>Resolver: {{ paso_actual.nombre }}</h3>
+  <form method="post" action="{% url 'titulacion:paso_aprobacion_resolver' paso_actual.pk %}">
+    {% csrf_token %}
+    {% for field in form %}<div class="field"><label>{{ field.label }}</label>{{ field }}{% if field.help_text %}<p class="tiny">{{ field.help_text }}</p>{% endif %}</div>{% endfor %}
+    <button class="btn" type="submit">Registrar decisión</button>
+  </form>
+</div>
+{% elif paso_actual %}
+<div class="alert info" style="margin-top:18px">Esta etapa corresponde a {{ paso_actual.instancia }}. Su cuenta puede consultar el expediente, pero no resolverla.</div>
+{% endif %}
+{% endblock %}

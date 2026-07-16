@@ -3,7 +3,7 @@
 {% block accounts_content %}
 <div class="page-head">
   <div><h2>Permisos</h2><p>Catálogo de acciones autorizables por módulo.</p></div>
-  {% if user.rol.nombre == 'supervisor' %}<a class="btn" href="{% url 'accounts:permiso_create' %}">Crear permiso</a>{% endif %}
+  {% if user.rol.nombre == 'administrador_desarrollador' %}<a class="btn" href="{% url 'accounts:permiso_create' %}">Crear permiso</a>{% endif %}
 </div>
 <form class="card filter-bar filter-compact" method="get">
   <div class="field"><label for="modulo">Módulo</label><select id="modulo" name="modulo"><option value="">Todos</option>{% for modulo in modulos %}<option value="{{ modulo }}"{% if modulo_seleccionado == modulo %} selected{% endif %}>{{ modulo|capfirst }}</option>{% endfor %}</select></div>
@@ -12,7 +12,7 @@
 <div class="table-wrap">
   <table class="table"><thead><tr><th>Código</th><th>Nombre</th><th>Módulo</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
     {% for permiso in permisos %}
-      <tr><td><b>{{ permiso.codigo }}</b></td><td>{{ permiso.nombre }}{% if permiso.descripcion %}<div class="tiny">{{ permiso.descripcion }}</div>{% endif %}</td><td>{{ permiso.modulo|capfirst }}</td><td>{% if permiso.esta_activo %}<span class="badge ok">Activo</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</td><td>{% if user.rol.nombre == 'supervisor' %}<a class="btn secondary smallbtn" href="{% url 'accounts:permiso_update' permiso.pk %}">Editar</a>{% else %}<span class="tiny">Solo lectura</span>{% endif %}</td></tr>
+      <tr><td><b>{{ permiso.codigo }}</b></td><td>{{ permiso.nombre }}{% if permiso.descripcion %}<div class="tiny">{{ permiso.descripcion }}</div>{% endif %}</td><td>{{ permiso.modulo|capfirst }}</td><td>{% if permiso.esta_activo %}<span class="badge ok">Activo</span>{% else %}<span class="badge warn">Inactivo</span>{% endif %}</td><td>{% if user.rol.nombre == 'administrador_desarrollador' %}<a class="btn secondary smallbtn" href="{% url 'accounts:permiso_update' permiso.pk %}">Editar</a>{% else %}<span class="tiny">Solo lectura</span>{% endif %}</td></tr>
     {% empty %}<tr><td colspan="5"><div class="empty-state">No existen permisos para este filtro.</div></td></tr>{% endfor %}
   </tbody></table>
 </div>
